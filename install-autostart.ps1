@@ -1,4 +1,4 @@
-# Tạo Scheduled Task để HMA Proxy Manager tự chạy (ẩn, không cửa sổ) khi đăng nhập Windows,
+﻿# Tạo Scheduled Task để HMA Proxy Manager tự chạy (ẩn, không cửa sổ) khi đăng nhập Windows,
 # và tự khởi động lại nếu bị tắt. Chạy: chuột phải > "Run with PowerShell"
 # Gỡ: Unregister-ScheduledTask -TaskName "HMA Proxy Manager" -Confirm:$false
 $ErrorActionPreference = "Stop"
