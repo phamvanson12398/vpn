@@ -92,6 +92,8 @@ class Monitor:
             store.update_proxy(r.proxy_id, consecutive_failures=failures, last_error=r.error, last_check=now,
                                health=health)
             log.info(t("check_fail", id=r.proxy_id, error=r.error))
+            if cfg.app_mode and info.status != "connected":
+                continue  # waiting for the user to connect the VPN app: nothing to restart
             if not in_grace and failures >= threshold:
                 reason = t("unhealthy", count=failures)
                 log.warning(reason)

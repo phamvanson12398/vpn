@@ -198,9 +198,16 @@ class WebApp:
         env_path = mgr.cfg.env_file if mgr else self.base_dir / ".env"
         env = parse_env_file(env_path)
         prov = self._provider()
-        out["provider"] = {"name": prov.name, "display": prov.display_name,
+        out["provider"] = {"name": prov.name, "display": prov.display_name, "mode": prov.mode,
                            "choices": [{"name": k, "display": v().display_name} for k, v in sorted(PROVIDERS.items())]}
-        out["credentials_set"] = bool(env.get(prov.user_env) and env.get(prov.pass_env))
+        if prov.mode == "app":
+            from .winutil import list_adapters, match_adapter
+
+            adapters = list_adapters()
+            mgr_patterns = (self.mgr.cfg.adapter_patterns() if self.mgr else list(prov.adapter_patterns))
+            out["app"] = {"adapters": adapters, "patterns": mgr_patterns,
+                          "matched": match_adapter(adapters, mgr_patterns)}
+        out["credentials_set"] = prov.mode == "app" or bool(env.get(prov.user_env) and env.get(prov.pass_env))
         out["vpn_user"] = env.get(prov.user_env, "")
         if mgr is None:
             return out
@@ -355,6 +362,13 @@ class WebApp:
         else:
             text = f"provider: {name}\n" + text
         return self.save_config(text)
+
+    def set_app_adapter(self, body: dict) -> dict:
+        """Remember which network adapter belongs to the VPN app (matched by its exact name)."""
+        name = str(body.get("name", "")).strip()
+        data = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}
+        data["app_vpn"] = {"adapter_match": [name] if name else []}
+        return self.save_config(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
     def manager_log(self, tail: int) -> str:
         path = (self.mgr.cfg.state_dir / self.mgr.cfg.log.file) if self.mgr else self.base_dir / ".hmaproxy/logs/hmaproxy.log"
@@ -511,6 +525,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._run(lambda: app.save_config(str(body.get("yaml", ""))))
         if path == "/api/config/proxies":
             return self._run(lambda: app.add_proxy(body))
+        if path == "/api/app-adapter":
+            return self._run(lambda: app.set_app_adapter(body))
         if path == "/api/provider":
             return self._run(lambda: app.set_provider(body))
         if path == "/api/credentials":

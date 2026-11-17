@@ -65,6 +65,8 @@ class VpnProvider(ABC):
     #: name used in config.yaml ``provider:``
     name: str = ""
     display_name: str = ""
+    #: "openvpn" = this tool runs one openvpn.exe per proxy; "app" = use the vendor's own app (1 proxy)
+    mode: str = "openvpn"
     #: environment variables holding the VPN username / password
     user_env: str = ""
     pass_env: str = ""

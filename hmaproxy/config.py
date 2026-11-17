@@ -80,6 +80,12 @@ class GatewayConfig:
 
 
 @dataclass
+class AppVpnConfig:
+    """App mode (provider: hma-app): how to recognise the VPN app's network adapter."""
+    adapter_match: list[str] = field(default_factory=list)  # empty = provider defaults (hma, hidemyass, privax)
+
+
+@dataclass
 class WebConfig:
     bind: str = "127.0.0.1"
     port: int = 8800
@@ -136,6 +142,7 @@ class AppConfig:
     socks5: Socks5Config
     gateway: GatewayConfig
     web: WebConfig
+    app_vpn: AppVpnConfig
     log: LogConfig
     selection: SelectionConfig
     raw_proxies: list[dict[str, Any]]
@@ -155,6 +162,13 @@ class AppConfig:
             if p.id == proxy_id:
                 return p
         return None
+
+    @property
+    def app_mode(self) -> bool:
+        return self.provider.mode == "app"
+
+    def adapter_patterns(self) -> list[str]:
+        return list(self.app_vpn.adapter_match) or list(getattr(self.provider, "adapter_patterns", []))
 
     @property
     def is_public_bind(self) -> bool:
@@ -269,6 +283,7 @@ def load_config(path: str | os.PathLike = "config.yaml", saved_plan: list[dict] 
         socks5=socks,
         gateway=_build(GatewayConfig, _section(data, "gateway"), "gateway"),
         web=_build(WebConfig, _section(data, "web"), "web"),
+        app_vpn=_build(AppVpnConfig, _section(data, "app_vpn"), "app_vpn"),
         log=_build(LogConfig, _section(data, "logging"), "logging"),
         selection=_build(SelectionConfig, _section(data, "selection"), "selection"),
         raw_proxies=list(data.get("proxies") or []),
@@ -287,15 +302,22 @@ def load_config(path: str | os.PathLike = "config.yaml", saved_plan: list[dict] 
         raise ConfigError(t("config_field_invalid", field="dns.servers", reason="at least one IPv4 DNS server"))
     _validate_scalars(cfg)
 
-    if not cfg.ovpn_dir.is_dir():
-        raise ConfigError(t("ovpn_dir_missing", path=cfg.ovpn_dir))
-    cfg.servers = provider.list_servers(cfg.ovpn_dir)
-    if not cfg.servers:
-        # Normal on first run: not an error, the UI guides the user to add files.
-        cfg.warnings.append(t("ovpn_dir_empty", path=cfg.ovpn_dir))
-
-    cfg.proxies = _resolve_proxies(cfg, saved_plan)
-    _validate_proxies(cfg)
+    if provider.mode == "app":
+        # One proxy through the vendor's own app; no .ovpn files involved.
+        server = provider.app_server()  # type: ignore[attr-defined]
+        cfg.servers = [server]
+        cfg.proxies = [ProxySpec(id="hma", ovpn=server.filename, country=server.country, http_port=cfg.base_port,
+                                 socks_port=cfg.socks5.base_port if cfg.socks5.enabled else None)]
+        _validate_proxies(cfg)
+    else:
+        if not cfg.ovpn_dir.is_dir():
+            raise ConfigError(t("ovpn_dir_missing", path=cfg.ovpn_dir))
+        cfg.servers = provider.list_servers(cfg.ovpn_dir)
+        if not cfg.servers:
+            # Normal on first run: not an error, the UI guides the user to add files.
+            cfg.warnings.append(t("ovpn_dir_empty", path=cfg.ovpn_dir))
+        cfg.proxies = _resolve_proxies(cfg, saved_plan)
+        _validate_proxies(cfg)
 
     if cfg.is_public_bind and not cfg.proxy_auth.enabled:
         cfg.warnings.append(t("public_bind_no_auth", bind=cfg.bind_address))
@@ -476,6 +498,8 @@ def load_credentials(cfg: AppConfig) -> Credentials:
     """Credentials from the environment first, then from the .env file."""
     file_values = parse_env_file(cfg.env_file)
     prov = cfg.provider
+    if prov.mode == "app":
+        return Credentials(user="", password="")
     user = os.environ.get(prov.user_env) or file_values.get(prov.user_env, "")
     password = os.environ.get(prov.pass_env) or file_values.get(prov.pass_env, "")
     if not user or not password:

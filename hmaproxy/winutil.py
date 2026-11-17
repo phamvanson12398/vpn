@@ -164,3 +164,77 @@ def kill_pid(pid: int) -> None:
                                creationflags=CREATE_NO_WINDOW)
         except (OSError, subprocess.TimeoutExpired):
             pass
+
+
+# ---------------------------------------------------------------------------
+# Network adapters (used by "app" mode: proxy through a VPN app's adapter)
+# ---------------------------------------------------------------------------
+def list_adapters() -> list[dict]:
+    """Adapters that are UP with an IPv4 address: [{name, description, ip}]."""
+    if not IS_WINDOWS:
+        return []
+    try:
+        return _win_adapters()
+    except Exception:  # noqa: BLE001 - never break the caller on an API quirk
+        return []
+
+
+def _win_adapters() -> list[dict]:
+    from ctypes import POINTER, Structure, byref, c_char_p, c_int, c_ubyte, c_ulong, c_ulonglong, c_void_p, c_wchar_p
+
+    class SOCKET_ADDRESS(Structure):  # noqa: N801
+        _fields_ = [("lpSockaddr", c_void_p), ("iSockaddrLength", c_int)]
+
+    class UNICAST(Structure):
+        pass
+
+    UNICAST._fields_ = [("Alignment", c_ulonglong), ("Next", POINTER(UNICAST)), ("Address", SOCKET_ADDRESS)]
+
+    class ADDRS(Structure):
+        pass
+
+    ADDRS._fields_ = [
+        ("Alignment", c_ulonglong), ("Next", POINTER(ADDRS)), ("AdapterName", c_char_p),
+        ("FirstUnicastAddress", POINTER(UNICAST)), ("FirstAnycastAddress", c_void_p),
+        ("FirstMulticastAddress", c_void_p), ("FirstDnsServerAddress", c_void_p), ("DnsSuffix", c_wchar_p),
+        ("Description", c_wchar_p), ("FriendlyName", c_wchar_p), ("PhysicalAddress", c_ubyte * 8),
+        ("PhysicalAddressLength", c_ulong), ("Flags", c_ulong), ("Mtu", c_ulong), ("IfType", c_ulong),
+        ("OperStatus", c_int),
+    ]
+    iphlpapi = ctypes.WinDLL("iphlpapi")
+    flags = 0x0002 | 0x0004 | 0x0008  # skip anycast, multicast, dns servers
+    size = c_ulong(32 * 1024)
+    for _ in range(3):
+        buf = ctypes.create_string_buffer(size.value)
+        rc = iphlpapi.GetAdaptersAddresses(2, flags, None, buf, byref(size))  # AF_INET
+        if rc == 0:
+            break
+        if rc != 111:  # ERROR_BUFFER_OVERFLOW -> retry with the size Windows asked for
+            return []
+    else:
+        return []
+    out = []
+    node = ctypes.cast(buf, POINTER(ADDRS))
+    while node:
+        a = node.contents
+        if a.OperStatus == 1:  # IfOperStatusUp
+            ua = a.FirstUnicastAddress
+            while ua:
+                sa = ctypes.cast(ua.contents.Address.lpSockaddr, POINTER(c_ubyte * 8)).contents
+                if sa[0] | (sa[1] << 8) == 2:  # AF_INET
+                    out.append({"name": a.FriendlyName or "", "description": a.Description or "",
+                                "ip": ".".join(str(b) for b in sa[4:8])})
+                    break
+                ua = ua.contents.Next
+        node = a.Next
+    return out
+
+
+def match_adapter(adapters: list[dict], patterns: list[str]) -> dict | None:
+    """First adapter whose name or description contains one of the patterns (case-insensitive)."""
+    pats = [p.lower() for p in patterns if p]
+    for a in adapters:
+        text = f"{a.get('name', '')} {a.get('description', '')}".lower()
+        if any(p in text for p in pats):
+            return a
+    return None

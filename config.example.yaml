@@ -1,5 +1,5 @@
 # HMA Proxy Manager - cấu hình
-provider: hma               # hma | expressvpn
+provider: hma               # hma | expressvpn | hma-app (dùng ứng dụng HMA, 1 proxy)
 language: vi                # vi | en
 max_connections: 5          # số kết nối cùng lúc gói VPN cho phép (HMA: 5/10, ExpressVPN: xem trong tài khoản)
 ovpn_dir: ./ovpn            # đặt các file .ovpn tải từ nhà cung cấp VPN vào đây

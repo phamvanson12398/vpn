@@ -99,8 +99,8 @@ class VpnController:
         return self._version_cache
 
     def preflight(self) -> None:
-        if not self.check_system:
-            return
+        if not self.check_system or self.cfg.app_mode:
+            return  # app mode needs neither OpenVPN nor admin rights
         if self.exe is None:
             raise HmaProxyError(t("openvpn_missing"), exit_code=3)
         if not is_admin():
@@ -109,7 +109,11 @@ class VpnController:
     def adapter_name(self, proxy_id: str) -> str:
         return f"{self.cfg.openvpn.adapter_prefix}-{proxy_id}"
 
-    def _real_instance(self, spec: ProxySpec, server: Server) -> OpenVPNInstance:
+    def _real_instance(self, spec: ProxySpec, server: Server):
+        if self.cfg.app_mode:
+            from .app_vpn import AppVpnInstance
+
+            return AppVpnInstance(spec.id, patterns=lambda: self.cfg.adapter_patterns())
         settings = OpenVPNSettings(exe=self.exe, driver=self.cfg.openvpn.driver,
                                    route_metric=self.cfg.openvpn.route_metric,
                                    verbosity=self.cfg.openvpn.verbosity,
@@ -160,7 +164,7 @@ class VpnController:
         if spec.id in self.instances:
             raise HmaProxyError(t("container_exists", id=spec.id, name=spec.id))
         self.preflight()
-        if self.check_system:
+        if self.check_system and not self.cfg.app_mode:
             self.adapters.ensure(self.adapter_name(spec.id))
         spec = ProxySpec(id=spec.id, ovpn=server.filename, country=spec.country or server.country,
                          http_port=spec.http_port, socks_port=spec.socks_port)
@@ -225,7 +229,7 @@ class VpnController:
         inst.stop()
         self.instances.pop(proxy_id, None)
         self.specs.pop(proxy_id, None)
-        if self.check_system:
+        if self.check_system and not self.cfg.app_mode:
             try:
                 self.adapters.delete(self.adapter_name(proxy_id))
             except HmaProxyError as exc:

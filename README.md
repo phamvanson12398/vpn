@@ -40,6 +40,22 @@ Trình duyệt / ứng dụng bình thường của bạn ──> mạng thật 
 
 **Tắt ứng dụng HMA chính thức** khi dùng chương trình này: nó cũng chiếm một suất kết nối và có thể đổi đường mạng của máy.
 
+## Chỉ có ứng dụng HMA: chế độ 1 proxy
+
+Nếu tài khoản HMA của bạn không tải được file `.ovpn`, dùng chế độ **HMA – dùng ứng dụng HMA (1 proxy)**:
+
+1. Chạy `start.bat`, vào tab **Cài đặt**, ở ô *Nhà cung cấp* chọn **HMA – dùng ứng dụng HMA (1 proxy)**. Hoặc đặt `provider: hma-app` trong `config.yaml`.
+2. Mở **ứng dụng HMA** và bấm kết nối.
+3. Tab **Proxy** › **Tạo proxy**. Bước này chỉ làm 1 lần; proxy nằm ở `127.0.0.1:8881`.
+
+Chế độ này không cần OpenVPN, file `.ovpn` hay mật khẩu, và không cần quyền Administrator.
+
+* Tool tự tìm card mạng của ứng dụng HMA (tên/mô tả có chữ *HMA*, *HideMyAss* hoặc *Privax*). Mọi kết nối của proxy được gắn vào card đó.
+* Nếu tool không tự nhận ra card, vào **Cài đặt › Card mạng của ứng dụng HMA** và bấm *Dùng card này* ở đúng card. Đó là card chỉ xuất hiện khi HMA đang kết nối.
+* HMA ngắt kết nối thì proxy tạm dừng (báo lỗi), **không** đi đường mạng thật. HMA kết nối lại thì proxy tự chạy lại.
+* Muốn đổi IP/quốc gia: đổi server ngay trong ứng dụng HMA.
+* Giới hạn: chỉ **1 IP** trên một máy, và **toàn bộ máy** cũng đi qua VPN (do ứng dụng HMA quyết định). Ở chế độ này tool không so sánh "IP thật", vì khi HMA bật thì chính máy cũng mang IP của HMA.
+
 ## Dùng với ExpressVPN
 
 Tool hỗ trợ cả **HMA** và **ExpressVPN**. Chọn nhà cung cấp ở tab **Cài đặt › Tài khoản VPN**, hoặc đặt `provider: expressvpn` trong `config.yaml`.

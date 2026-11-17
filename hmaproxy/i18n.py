@@ -115,6 +115,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Tunnel IP {ip} trùng với proxy {other}; kết nối lại để nhận IP khác",
         "en": "Tunnel IP {ip} clashes with proxy {other}; reconnecting to get another one",
     },
+    "app_vpn_found": {
+        "vi": "Đã thấy kết nối VPN của ứng dụng: {name} ({desc}), IP {ip}",
+        "en": "Found the VPN app's connection: {name} ({desc}), IP {ip}",
+    },
+    "app_vpn_lost": {
+        "vi": "Ứng dụng VPN đã ngắt kết nối; proxy tạm dừng (không đi mạng thật)",
+        "en": "The VPN app disconnected; proxy paused (never uses the real connection)",
+    },
+    "app_vpn_missing": {
+        "vi": "Chưa thấy kết nối VPN của ứng dụng HMA. Mở ứng dụng HMA và bấm kết nối (hoặc chọn đúng card mạng ở tab Cài đặt).",
+        "en": "No connection from the HMA app found. Open the HMA app and connect (or pick the right adapter in Settings).",
+    },
     "port_in_use": {
         "vi": "Cổng {port} đang bị chương trình khác dùng ({error}). Đổi base_port hoặc port của proxy.",
         "en": "Port {port} is already in use ({error}). Change base_port or the proxy's port.",

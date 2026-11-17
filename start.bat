@@ -87,8 +87,9 @@ if "%NEED_PIP%"=="1" (
   copy /y "requirements.txt" "%STAMP%" >nul
 )
 
-REM ---------- 4. OpenVPN Community ----------
+REM ---------- 4. OpenVPN Community (khong can o che do hma-app: dung ung dung HMA) ----------
 set "OVPN="
+if exist "config.yaml" findstr /R /C:"^provider: *hma-app" "config.yaml" >nul 2>&1 && goto :run
 if exist "%ProgramFiles%\OpenVPN\bin\openvpn.exe" set "OVPN=%ProgramFiles%\OpenVPN\bin\openvpn.exe"
 if not defined OVPN for %%I in (openvpn.exe) do if not "%%~$PATH:I"=="" set "OVPN=%%~$PATH:I"
 if not defined OVPN (
@@ -110,6 +111,7 @@ if not defined OVPN (
   echo [OK] OpenVPN: !OVPN!
 )
 
+:run
 REM ---------- 5. Chay tool ----------
 echo.
 echo [*] Dang chay. Giao dien: http://127.0.0.1:8800  ^(trinh duyet se tu mo^)

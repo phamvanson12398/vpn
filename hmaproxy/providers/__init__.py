@@ -5,10 +5,12 @@ from ..i18n import t
 from .base import Credentials, Server, VpnProvider, normalize_country
 from .expressvpn import ExpressVpnProvider
 from .hma import HmaProvider
+from .hma_app import HmaAppProvider
 
 PROVIDERS: dict[str, type[VpnProvider]] = {
     HmaProvider.name: HmaProvider,
     ExpressVpnProvider.name: ExpressVpnProvider,
+    HmaAppProvider.name: HmaAppProvider,
 }
 
 

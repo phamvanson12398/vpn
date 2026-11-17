@@ -146,14 +146,26 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color:
         <label style="flex-direction:row;align-items:center;gap:8px">Nhà cung cấp <select id="pv-select"></select></label>
       </div>
       <p class="muted" id="pv-help"></p>
-      <div class="row">
+      <div class="row openvpn-only">
         <input id="cr-user" placeholder="username OpenVPN" autocomplete="off">
         <input id="cr-pass" type="password" placeholder="password OpenVPN" autocomplete="new-password">
         <button class="btn primary" id="cr-save">Lưu</button>
         <span id="cr-state" class="muted"></span>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel app-only hidden">
+      <h2>2. Card mạng của ứng dụng HMA</h2>
+      <p class="muted">Bật ứng dụng HMA và bấm kết nối. Tool tự nhận card mạng có chữ “HMA”. Nếu không nhận ra, chọn đúng card ở dưới: đó thường là card <b>chỉ xuất hiện khi HMA đang kết nối</b> (thử ngắt/kết nối HMA rồi bấm Làm mới để so sánh).</p>
+      <div class="row" style="margin-bottom:10px">
+        <span id="app-state"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="app-refresh">Làm mới</button>
+        <button class="btn" id="app-auto">Tự nhận (mặc định)</button>
+      </div>
+      <div class="tablewrap"><table><thead><tr><th>Tên card</th><th>Mô tả</th><th>IP</th><th></th></tr></thead>
+        <tbody id="app-rows"></tbody></table></div>
+    </div>
+    <div class="panel openvpn-only">
       <h2>2. File .ovpn</h2>
       <p class="muted">Tải file OpenVPN từ tài khoản VPN rồi chọn ở đây (chọn được nhiều file), hoặc chép thẳng vào thư mục <span class="mono" id="ovpn-dir"></span>.</p>
       <div class="row" style="margin-bottom:10px">
@@ -166,7 +178,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color:
         <tbody id="ovpn-rows"></tbody></table>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel openvpn-only">
       <h2>3. Thêm proxy vào cấu hình</h2>
       <div class="row">
         <input id="ap-id" placeholder="id (vd: jp)" style="width:120px">
@@ -242,7 +254,13 @@ const STATUS_VI = { connected: "đã kết nối", connecting: "đang kết nố
 function render() {
   const s = state; if (!s) return;
   const sys = s.system || {};
-  $("#m-docker").innerHTML = sys.ok ? `OpenVPN: <span class="badge ok">sẵn sàng</span>` : `OpenVPN: <span class="badge bad">${sys.openvpn ? (sys.admin ? "lỗi" : "thiếu quyền Admin") : "chưa cài"}</span>`;
+  const appMode = s.provider && s.provider.mode === "app";
+  $$(".openvpn-only").forEach(e => e.classList.toggle("hidden", appMode));
+  $$(".app-only").forEach(e => e.classList.toggle("hidden", !appMode));
+  if (appMode) {
+    const m = s.app && s.app.matched;
+    $("#m-docker").innerHTML = m ? `HMA app: <span class="badge ok">đã kết nối</span>` : `HMA app: <span class="badge warn">chưa kết nối</span>`;
+  } else $("#m-docker").innerHTML = sys.ok ? `OpenVPN: <span class="badge ok">sẵn sàng</span>` : `OpenVPN: <span class="badge bad">${sys.openvpn ? (sys.admin ? "lỗi" : "thiếu quyền Admin") : "chưa cài"}</span>`;
   $("#m-realip").textContent = s.real_ip ? `IP thật: ${s.real_ip}` : "";
   $("#m-monitor").textContent = s.monitor ? `Giám sát: ${s.monitor.running ? "đang chạy" : "dừng"}${s.monitor.last_tick ? " · " + ago(s.monitor.last_tick) : ""}` : "";
 
@@ -257,7 +275,10 @@ function render() {
   // onboarding
   const pvName = (s.provider && s.provider.display) || "VPN";
   const created = s.proxies.filter(p => p.created).length;
-  const steps = [
+  const steps = appMode ? [
+    [!!(s.app && s.app.matched), "Mở ứng dụng HMA và bấm kết nối (Connect)"],
+    [created > 0, "Bấm “Tạo proxy” (chỉ cần làm 1 lần)"],
+  ] : [
     [!!sys.openvpn, "Cài OpenVPN Community (miễn phí) – openvpn.net/community-downloads"],
     [!!sys.admin, "Chạy chương trình bằng quyền Administrator (start.bat tự hỏi)"],
     [s.credentials_set, `Nhập username/password OpenVPN của ${pvName} (tab Cài đặt)`],
@@ -317,6 +338,17 @@ function render() {
   sel.innerHTML = s.ovpn_files.map(f => `<option value="${esc(f.filename)}">${esc(f.location)} ${f.protocol ? "(" + esc(f.protocol.toUpperCase()) + ")" : ""} — ${esc(f.filename)}</option>`).join("");
   if (cur) sel.value = cur;
 
+  // app mode: adapters
+  if (appMode && s.app) {
+    const m = s.app.matched;
+    $("#app-state").innerHTML = m ? `<span class="badge ok">Đang dùng</span> ${esc(m.name)} — ${esc(m.ip)}`
+      : `<span class="badge warn">Chưa thấy card của HMA</span> <span class="muted">(đang tìm: ${esc(s.app.patterns.join(", "))})</span>`;
+    $("#app-rows").innerHTML = s.app.adapters.map(a => `<tr><td>${esc(a.name)}</td><td class="muted">${esc(a.description)}</td>
+      <td class="mono">${esc(a.ip)}</td><td style="text-align:right">${m && m.name === a.name ? '<span class="badge ok">đang dùng</span>'
+      : `<button class="btn sm" data-adapter="${esc(a.name)}">Dùng card này</button>`}</td></tr>`).join("")
+      || `<tr><td colspan="4" class="muted">Không đọc được danh sách card mạng.</td></tr>`;
+  }
+
   // logs source list
   const ls = $("#lg-source"), lcur = ls.value;
   ls.innerHTML = `<option value="__manager">Manager (chương trình này)</option>` +
@@ -331,6 +363,7 @@ function render() {
 }
 
 const PV_HELP = {
+  "hma-app": 'Chế độ <b>1 proxy</b>: không cần file .ovpn hay mật khẩu. Bật ứng dụng HMA, bấm kết nối; proxy sẽ ra Internet bằng IP của HMA. Muốn đổi IP/quốc gia thì đổi server ngay trong ứng dụng HMA. HMA ngắt thì proxy tạm dừng, không đi mạng thật.',
   hma: 'Dùng <b>username/password OpenVPN</b> trong tài khoản HMA (mục cấu hình thủ công), không phải email đăng nhập web. Mật khẩu lưu trong file <span class="mono">.env</span>, không bao giờ hiển thị lại.',
   expressvpn: 'Vào <b>expressvpn.com</b> › Sign In › <b>Set up other devices</b> › <b>Manual Configuration</b> › tab <b>OpenVPN</b>. Chép <b>Username</b> và <b>Password</b> hiện ở đó (khác email/mật khẩu tài khoản) vào ô dưới, rồi tải các file <span class="mono">.ovpn</span> theo địa điểm ở danh sách bên dưới trang đó. Mật khẩu lưu trong <span class="mono">.env</span>, không bao giờ hiển thị lại.',
 };
@@ -408,6 +441,12 @@ $("#ex-download").onclick = () => {
 };
 
 // --- setup
+$("#app-refresh").onclick = refresh;
+$("#app-auto").onclick = () => run("Tự nhận card HMA", () => api("POST", "/api/app-adapter", { name: "" }));
+$("#app-rows").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-adapter]"); if (!b) return;
+  run(`Dùng card ${b.dataset.adapter}`, () => api("POST", "/api/app-adapter", { name: b.dataset.adapter }));
+});
 $("#pv-select").onchange = (ev) => run("Đổi nhà cung cấp", () => api("POST", "/api/provider", { provider: ev.target.value }));
 $("#cr-save").onclick = () => run("Lưu tài khoản", async () => {
   const r = await api("POST", "/api/credentials", { user: $("#cr-user").value, password: $("#cr-pass").value });

@@ -183,6 +183,10 @@ class Manager:
 
     # ------------------------------------------------------------------ status
     def real_ip(self, refresh: bool = False) -> str | None:
+        if self.cfg.app_mode:
+            # The VPN app routes the whole PC, so a direct request already shows the VPN IP:
+            # comparing would raise false "leak" alarms. Binding to the VPN adapter is the guarantee here.
+            return None
         data = self.store.load()
         cached = data.get("real_ip") or {}
         if not refresh and cached.get("ip") and time.time() - cached.get("at", 0) < 600:
