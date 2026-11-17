@@ -1,0 +1,16 @@
+# Linux (tùy chọn): chạy web UI + giám sát như dịch vụ systemd.
+# sudo cp deploy/hmaproxy.service /etc/systemd/system/ && sudo systemctl enable --now hmaproxy
+[Unit]
+Description=HMA Proxy Manager
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+WorkingDirectory=/opt/hma-proxy-manager
+ExecStart=/opt/hma-proxy-manager/.venv/bin/python -m hmaproxy web --no-browser
+Restart=always
+RestartSec=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

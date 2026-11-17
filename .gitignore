@@ -1,0 +1,15 @@
+# secrets & local config
+.env
+config.yaml
+config.yaml.bak
+ovpn/*
+!ovpn/README.md
+.hmaproxy/
+# python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+build/
+dist/

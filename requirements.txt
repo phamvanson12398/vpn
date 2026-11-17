@@ -1,0 +1,4 @@
+docker>=7.0
+PyYAML>=6.0
+requests[socks]>=2.31
+pywin32>=306; sys_platform == "win32"

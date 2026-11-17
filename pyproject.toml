@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hma-proxy-manager"
+version = "0.1.0"
+description = "Run several HMA VPN connections in parallel, one HTTP/SOCKS5 proxy per connection"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "docker>=7.0",
+  "PyYAML>=6.0",
+  "requests[socks]>=2.31",
+  "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.scripts]
+hmaproxy = "hmaproxy.cli:main"
+
+[tool.setuptools]
+packages = ["hmaproxy", "hmaproxy.providers"]
+
+[tool.setuptools.package-data]
+hmaproxy = ["static/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

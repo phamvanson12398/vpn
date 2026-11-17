@@ -1,0 +1,39 @@
+# Giai đoạn 1-2 (thử thủ công, không cần Manager): 2 proxy HMA bằng docker compose.
+# Đặt Japan.ovpn, Singapore.ovpn vào ../ovpn và tạo file secrets/hma_user, secrets/hma_pass.
+# Chạy:  docker compose -f examples/docker-compose.yml up -d
+# Thử:   curl -x http://127.0.0.1:8881 https://api.ipify.org
+x-gluetun: &gluetun
+  image: qmcgaw/gluetun:v3.40.0
+  cap_add: [NET_ADMIN]
+  devices: ["/dev/net/tun:/dev/net/tun"]
+  restart: unless-stopped
+  secrets: [openvpn_user, openvpn_password]
+
+services:
+  hma-jp:
+    <<: *gluetun
+    ports: ["127.0.0.1:8881:8888/tcp"]
+    volumes: ["../ovpn/Japan.ovpn:/gluetun/custom/config.ovpn:ro"]
+    environment:
+      VPN_SERVICE_PROVIDER: custom
+      VPN_TYPE: openvpn
+      OPENVPN_CUSTOM_CONFIG: /gluetun/custom/config.ovpn
+      HTTPPROXY: "on"
+      HTTPPROXY_STEALTH: "on"
+
+  hma-sg:
+    <<: *gluetun
+    ports: ["127.0.0.1:8882:8888/tcp"]
+    volumes: ["../ovpn/Singapore.ovpn:/gluetun/custom/config.ovpn:ro"]
+    environment:
+      VPN_SERVICE_PROVIDER: custom
+      VPN_TYPE: openvpn
+      OPENVPN_CUSTOM_CONFIG: /gluetun/custom/config.ovpn
+      HTTPPROXY: "on"
+      HTTPPROXY_STEALTH: "on"
+
+secrets:
+  openvpn_user:
+    file: ./secrets/hma_user
+  openvpn_password:
+    file: ./secrets/hma_pass

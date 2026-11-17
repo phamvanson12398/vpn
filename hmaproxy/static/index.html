@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HMA Proxy Manager</title>
+<style>
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --text: #1d2330; --muted: #6b7385; --line: #e2e5ec;
+  --accent: #5b3fd1; --accent-ink: #ffffff; --ok: #1f8a4c; --warn: #b7791f; --bad: #c53030;
+  --ok-bg: #e6f4ec; --warn-bg: #fdf3e1; --bad-bg: #fdeaea; --chip: #eef0f5; --code: #f0f2f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12141a; --panel: #1b1e26; --text: #e6e8ee; --muted: #9aa1b2; --line: #2b2f3a;
+    --accent: #8b74ff; --accent-ink: #12141a; --ok: #4cc38a; --warn: #e2b04a; --bad: #f07171;
+    --ok-bg: #173325; --warn-bg: #3a2f17; --bad-bg: #3d1d1d; --chip: #262a35; --code: #151820;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+header .meta { color: var(--muted); font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; }
+nav { display: flex; gap: 4px; margin-left: auto; }
+nav button { background: none; border: 0; padding: 7px 12px; border-radius: 6px; color: var(--muted); cursor: pointer; font: inherit; }
+nav button.active { background: var(--chip); color: var(--text); font-weight: 600; }
+main { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+.panel h2 { font-size: 15px; margin: 0 0 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+button.btn { font: inherit; padding: 7px 13px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+button.btn:hover { border-color: var(--muted); }
+button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.btn.danger { color: var(--bad); }
+button.btn.sm { padding: 3px 9px; font-size: 12.5px; }
+button:disabled { opacity: .5; cursor: progress; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 600; }
+td.mono, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.badge.ok { background: var(--ok-bg); color: var(--ok); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.bad { background: var(--bad-bg); color: var(--bad); }
+.alert { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; border: 1px solid; }
+.alert.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+.alert.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.alert.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.muted { color: var(--muted); }
+.err { color: var(--bad); font-size: 12.5px; max-width: 360px; overflow-wrap: anywhere; }
+input, select, textarea { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
+textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+pre { background: var(--code); padding: 12px; border-radius: 8px; overflow: auto; max-height: 520px; font-size: 12.5px; white-space: pre-wrap; word-break: break-all; margin: 0; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.steps { margin: 0; padding-left: 20px; }
+.steps li { margin: 4px 0; }
+.steps li.done { color: var(--muted); text-decoration: line-through; }
+.tablewrap { overflow-x: auto; }
+.hidden { display: none !important; }
+#toast { position: fixed; right: 20px; bottom: 20px; max-width: 420px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+#toast div { padding: 10px 14px; border-radius: 8px; background: var(--text); color: var(--bg); box-shadow: 0 4px 16px rgba(0,0,0,.2); white-space: pre-wrap; }
+@media (max-width: 700px) { header, main { padding-left: 16px; padding-right: 16px; } nav { margin-left: 0; width: 100%; overflow-x: auto; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>HMA Proxy Manager</h1>
+  <div class="meta">
+    <span id="m-docker">Docker: …</span>
+    <span id="m-realip"></span>
+    <span id="m-monitor"></span>
+  </div>
+  <nav>
+    <button data-tab="proxies" class="active">Proxy</button>
+    <button data-tab="export">Xuất danh sách</button>
+    <button data-tab="setup">Cài đặt</button>
+    <button data-tab="logs">Nhật ký</button>
+  </nav>
+</header>
+<main>
+  <div id="alerts"></div>
+
+  <!-- PROXIES -->
+  <section id="tab-proxies">
+    <div class="panel" id="onboarding">
+      <h2>Bắt đầu</h2>
+      <ol class="steps" id="steps"></ol>
+    </div>
+    <div class="panel">
+      <div class="row" style="margin-bottom:12px">
+        <h2 style="margin:0">Danh sách proxy</h2>
+        <span class="muted" id="summary"></span>
+        <span class="spacer"></span>
+        <button class="btn primary" id="btn-create">Tạo proxy</button>
+        <button class="btn" data-all="check">Kiểm tra IP</button>
+        <button class="btn" data-all="start">Bật tất cả</button>
+        <button class="btn" data-all="restart">Restart tất cả</button>
+        <button class="btn" data-all="stop">Tắt tất cả</button>
+        <button class="btn danger" data-all="remove">Xóa tất cả</button>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>ID</th><th>Quốc gia / server</th><th>Cổng</th><th>Container</th><th>Sức khỏe</th>
+            <th>IP ra ngoài</th><th>Thời gian chạy</th><th></th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="8" class="muted">Đang tải…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- EXPORT -->
+  <section id="tab-export" class="hidden">
+    <div class="panel">
+      <h2>Xuất danh sách proxy</h2>
+      <div class="row" style="margin-bottom:12px">
+        <label>Định dạng
+          <select id="ex-format">
+            <option value="http">http://ip:port</option>
+            <option value="socks5">socks5://ip:port</option>
+            <option value="plain">ip:port</option>
+            <option value="json">JSON</option>
+          </select>
+        </label>
+        <label>Host (để trống = tự động)<input id="ex-host" placeholder="127.0.0.1"></label>
+        <label style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="ex-healthy" checked> Chỉ proxy đang khỏe</label>
+        <label style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="ex-auth" checked> Kèm user:pass</label>
+        <span class="spacer"></span>
+        <button class="btn" id="ex-copy">Sao chép</button>
+        <button class="btn" id="ex-download">Tải file</button>
+      </div>
+      <pre id="ex-out" class="mono"></pre>
+      <p class="muted" id="ex-gateway"></p>
+    </div>
+  </section>
+
+  <!-- SETUP -->
+  <section id="tab-setup" class="hidden">
+    <div class="panel">
+      <h2>1. Tài khoản VPN HMA</h2>
+      <p class="muted">Dùng <b>username/password VPN</b> (trong tài khoản HMA, mục cấu hình thủ công / OpenVPN), không phải email đăng nhập web. Mật khẩu được lưu vào file <span class="mono">.env</span> và không bao giờ hiển thị lại.</p>
+      <div class="row">
+        <input id="cr-user" placeholder="HMA_USER" autocomplete="off">
+        <input id="cr-pass" type="password" placeholder="HMA_PASS" autocomplete="new-password">
+        <button class="btn primary" id="cr-save">Lưu</button>
+        <span id="cr-state" class="muted"></span>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>2. File .ovpn của HMA</h2>
+      <p class="muted">Tải file OpenVPN từ tài khoản HMA rồi chọn ở đây (chọn được nhiều file), hoặc chép thẳng vào thư mục <span class="mono" id="ovpn-dir"></span>.</p>
+      <div class="row" style="margin-bottom:10px">
+        <input type="file" id="ovpn-file" accept=".ovpn" multiple>
+        <input id="ovpn-filter" placeholder="Lọc theo tên / quốc gia">
+        <span class="muted" id="ovpn-count"></span>
+      </div>
+      <div class="tablewrap" style="max-height:320px;overflow:auto">
+        <table><thead><tr><th>File</th><th>Quốc gia</th><th>Giao thức</th><th></th></tr></thead>
+        <tbody id="ovpn-rows"></tbody></table>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>3. Thêm proxy vào cấu hình</h2>
+      <div class="row">
+        <input id="ap-id" placeholder="id (vd: jp)" style="width:120px">
+        <select id="ap-ovpn" style="min-width:260px"></select>
+        <input id="ap-port" placeholder="cổng (tự động)" style="width:140px" inputmode="numeric">
+        <button class="btn primary" id="ap-add">Thêm</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="row" style="margin-bottom:10px">
+        <h2 style="margin:0">4. config.yaml (nâng cao)</h2>
+        <span class="muted mono" id="cfg-path"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="cfg-reload">Tải lại</button>
+        <button class="btn primary" id="cfg-save">Kiểm tra &amp; lưu</button>
+      </div>
+      <div id="cfg-msg"></div>
+      <textarea id="cfg-text" rows="26" spellcheck="false"></textarea>
+      <p class="muted">Đổi <span class="mono">bind_address</span>, <span class="mono">socks5</span>, <span class="mono">proxy_auth</span> chỉ áp dụng cho proxy tạo mới: hãy Xóa rồi Tạo lại proxy. Đổi <span class="mono">web</span> hoặc <span class="mono">gateway</span> cần khởi động lại chương trình.</p>
+    </div>
+  </section>
+
+  <!-- LOGS -->
+  <section id="tab-logs" class="hidden">
+    <div class="panel">
+      <div class="row" style="margin-bottom:10px">
+        <select id="lg-source"></select>
+        <select id="lg-tail"><option>100</option><option selected>300</option><option>1000</option></select>
+        <button class="btn" id="lg-refresh">Làm mới</button>
+        <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="lg-auto"> Tự làm mới</label>
+      </div>
+      <pre id="lg-out" class="mono"></pre>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+let state = null;
+let busy = false;
+
+function esc(v) { return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function toast(msg, ms = 4500) {
+  const d = document.createElement("div"); d.textContent = msg; $("#toast").appendChild(d);
+  setTimeout(() => d.remove(), ms);
+}
+async function api(method, url, body) {
+  const opt = { method, headers: { "X-HMA-Request": "1" } };
+  if (body !== undefined) { opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+  const res = await fetch(url, opt);
+  const ct = res.headers.get("Content-Type") || "";
+  const data = ct.includes("application/json") ? await res.json() : await res.text();
+  if (!res.ok) throw new Error((data && data.error) || res.statusText);
+  return data;
+}
+function fmtUptime(s) {
+  if (s == null) return "—";
+  s = Math.floor(s); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d}n ${h}g` : h ? `${h}g ${m}p` : `${m}p ${s % 60}s`;
+}
+function ago(ts) { if (!ts) return ""; const s = Math.round(Date.now() / 1000 - ts); return s < 60 ? `${s}s trước` : `${Math.round(s / 60)} phút trước`; }
+
+const HEALTH = {
+  healthy: ["ok", "Khỏe"], starting: ["warn", "Đang kết nối"], unhealthy: ["bad", "Hỏng"],
+  failed: ["bad", "FAILED"], stopped: ["", "Đã tắt"], unknown: ["", "Chưa kiểm tra"], "-": ["", "—"],
+};
+const STATUS = { running: "ok", exited: "bad", restarting: "warn", created: "", "not created": "", missing: "bad", unknown: "" };
+
+function render() {
+  const s = state; if (!s) return;
+  $("#m-docker").innerHTML = s.docker.ok ? 'Docker: <span class="badge ok">OK</span>' : 'Docker: <span class="badge bad">không kết nối</span>';
+  $("#m-realip").textContent = s.real_ip ? `IP thật: ${s.real_ip}` : "";
+  $("#m-monitor").textContent = s.monitor ? `Giám sát: ${s.monitor.running ? "đang chạy" : "dừng"}${s.monitor.last_tick ? " · " + ago(s.monitor.last_tick) : ""}` : "";
+
+  // alerts
+  const al = [];
+  if (s.config_error) al.push(`<div class="alert bad"><b>Cấu hình chưa hợp lệ:</b> ${esc(s.config_error)}</div>`);
+  if (!s.config_error && !s.docker.ok) al.push(`<div class="alert bad"><b>Không kết nối được Docker.</b> Hãy cài và mở Docker Desktop (chế độ WSL 2), rồi đợi biểu tượng Docker báo “running”.<div style="font-size:12.5px;opacity:.8;margin-top:4px">${esc(s.docker.error || "")}</div></div>`);
+  for (const w of s.warnings || []) al.push(`<div class="alert warn">${esc(w)}</div>`);
+  if (s.docker.ok && s.monitor && s.monitor.last_error) al.push(`<div class="alert warn">Giám sát: ${esc(s.monitor.last_error)}</div>`);
+  $("#alerts").innerHTML = al.join("");
+
+  // onboarding
+  const created = s.proxies.filter(p => p.created).length;
+  const steps = [
+    [s.docker.ok, "Cài và mở Docker Desktop (Windows, chế độ WSL 2)"],
+    [s.credentials_set, "Nhập username/password VPN của HMA (tab Cài đặt)"],
+    [s.ovpn_files.length > 0, "Thêm file .ovpn tải từ HMA (tab Cài đặt)"],
+    [!s.config_error && s.proxies.length > 0, "Chọn server cho từng proxy (tab Cài đặt › Thêm proxy)"],
+    [created > 0, "Bấm “Tạo proxy”"],
+  ];
+  $("#steps").innerHTML = steps.map(([ok, txt]) => `<li class="${ok ? "done" : ""}">${esc(txt)}</li>`).join("");
+  $("#onboarding").classList.toggle("hidden", steps.every(x => x[0]));
+
+  // table
+  const rows = s.proxies;
+  const healthy = rows.filter(p => p.health === "healthy").length;
+  $("#summary").textContent = s.settings ? `${healthy}/${rows.length} khỏe · tối đa ${s.settings.max_connections} kết nối` : "";
+  if (!rows.length) {
+    $("#rows").innerHTML = `<tr><td colspan="8" class="muted">Chưa có proxy nào trong cấu hình.</td></tr>`;
+  } else {
+    $("#rows").innerHTML = rows.map(p => {
+      const [hc, hl] = HEALTH[p.health] || ["", p.health];
+      const ports = [`HTTP ${p.http_port ?? "?"}`].concat(p.socks_port ? [`SOCKS5 ${p.socks_port}`] : []).join("<br>");
+      const socksBadge = p.socks_status && p.socks_status !== "running" ? ` <span class="badge bad">socks ${esc(p.socks_status)}</span>` : "";
+      const actions = !s.docker.ok ? "" : p.created
+        ? `<button class="btn sm" data-act="check" data-id="${esc(p.id)}">Kiểm tra</button>
+           ${p.status === "running" ? `<button class="btn sm" data-act="restart" data-id="${esc(p.id)}">Restart</button>
+           <button class="btn sm" data-act="stop" data-id="${esc(p.id)}">Tắt</button>` : `<button class="btn sm" data-act="start" data-id="${esc(p.id)}">Bật</button>`}
+           <button class="btn sm" data-act="logs" data-id="${esc(p.id)}">Log</button>
+           <button class="btn sm danger" data-act="remove" data-id="${esc(p.id)}">Xóa</button>`
+        : `<button class="btn sm primary" data-act="create" data-id="${esc(p.id)}">Tạo</button>
+           ${p.in_config ? `<button class="btn sm danger" data-act="unconfig" data-id="${esc(p.id)}">Bỏ khỏi cấu hình</button>` : ""}`;
+      return `<tr>
+        <td><b>${esc(p.id)}</b></td>
+        <td>${esc(p.country)}<div class="muted mono" style="font-size:12px">${esc(p.ovpn)}</div></td>
+        <td class="mono">${ports}</td>
+        <td><span class="badge ${STATUS[p.status] ?? ""}">${esc(p.status)}</span>${socksBadge}</td>
+        <td><span class="badge ${hc}">${esc(hl)}</span>${p.last_error && p.health !== "healthy" ? `<div class="err">${esc(p.last_error)}</div>` : ""}</td>
+        <td class="mono">${esc(p.ip || "—")}<div class="muted" style="font-size:12px">${esc(ago(p.last_check))}</div></td>
+        <td>${fmtUptime(p.uptime)}</td>
+        <td><div class="row" style="gap:4px;justify-content:flex-end">${actions}</div></td>
+      </tr>`;
+    }).join("");
+  }
+
+  // setup tab
+  $("#cr-state").innerHTML = s.credentials_set ? `<span class="badge ok">Đã lưu</span> ${esc(s.vpn_user)}` : `<span class="badge warn">Chưa có</span>`;
+  if (!$("#cr-user").value && s.vpn_user) $("#cr-user").value = s.vpn_user;
+  $("#ovpn-dir").textContent = s.ovpn_dir || "";
+  renderOvpn();
+  const sel = $("#ap-ovpn"), cur = sel.value;
+  sel.innerHTML = s.ovpn_files.map(f => `<option value="${esc(f.filename)}">${esc(f.location)} ${f.protocol ? "(" + esc(f.protocol.toUpperCase()) + ")" : ""} — ${esc(f.filename)}</option>`).join("");
+  if (cur) sel.value = cur;
+
+  // logs source list
+  const ls = $("#lg-source"), lcur = ls.value;
+  ls.innerHTML = `<option value="__manager">Manager (chương trình này)</option>` +
+    rows.filter(p => p.created).map(p => `<option value="${esc(p.id)}">VPN ${esc(p.id)}</option>` + (p.socks_port ? `<option value="${esc(p.id)}|socks">SOCKS5 ${esc(p.id)}</option>` : "")).join("");
+  if (lcur) ls.value = lcur;
+
+  // gateway hint
+  const st = s.settings;
+  $("#ex-gateway").textContent = st && st.gateway
+    ? `Cổng xoay vòng: http://${st.bind_address === "0.0.0.0" ? "<ip máy này>" : st.bind_address}:${st.gateway_http_port}` + (st.socks5 ? ` · socks5://…:${st.gateway_socks_port}` : "") + ` — mỗi kết nối mới đi qua một proxy khỏe khác nhau.`
+    : "Mẹo: bật gateway trong config.yaml để có một cổng duy nhất tự xoay vòng qua các proxy.";
+}
+
+function renderOvpn() {
+  const f = ($("#ovpn-filter").value || "").toLowerCase();
+  const list = (state?.ovpn_files || []).filter(x => !f || (x.filename + x.country).toLowerCase().includes(f));
+  $("#ovpn-count").textContent = `${state?.ovpn_files.length || 0} file`;
+  $("#ovpn-rows").innerHTML = list.map(x => `<tr><td class="mono">${esc(x.filename)}</td><td>${esc(x.country)}</td><td>${esc(x.protocol.toUpperCase())}</td>
+    <td style="text-align:right"><button class="btn sm danger" data-del-ovpn="${esc(x.filename)}">Xóa</button></td></tr>`).join("")
+    || `<tr><td colspan="4" class="muted">Chưa có file .ovpn nào.</td></tr>`;
+}
+
+async function refresh() {
+  try { state = await api("GET", "/api/status"); render(); }
+  catch (e) { $("#m-docker").textContent = "Mất kết nối tới chương trình: " + e.message; }
+}
+
+async function run(label, fn) {
+  if (busy) return toast("Đang có thao tác khác, vui lòng chờ…");
+  busy = true; $$("button").forEach(b => b.disabled = true);
+  toast(label + "…", 2500);
+  try {
+    const r = await fn();
+    if (r && r.results) {
+      const bad = r.results.filter(x => !x.ok);
+      const lines = r.results.map(x => x.message || (x.ok ? `${x.id}: OK ${x.ip || ""}` : `${x.id}: ${x.error}`));
+      toast(lines.join("\n") || "Xong", bad.length ? 9000 : 4500);
+    } else if (r && r.ok === false) toast(r.error || "Lỗi", 9000);
+    else toast("Xong");
+    return r;
+  } catch (e) { toast("Lỗi: " + e.message, 9000); }
+  finally { busy = false; $$("button").forEach(b => b.disabled = false); refresh(); }
+}
+
+// --- tabs
+$$("nav button").forEach(b => b.onclick = () => {
+  $$("nav button").forEach(x => x.classList.toggle("active", x === b));
+  $$("main > section").forEach(sec => sec.classList.toggle("hidden", sec.id !== "tab-" + b.dataset.tab));
+  if (b.dataset.tab === "export") loadExport();
+  if (b.dataset.tab === "setup") loadConfig();
+  if (b.dataset.tab === "logs") loadLogs();
+});
+
+// --- proxy actions
+$("#btn-create").onclick = () => run("Đang tạo proxy (lần đầu cần tải image, có thể mất vài phút)", () => api("POST", "/api/create", {}));
+$$("[data-all]").forEach(b => b.onclick = () => {
+  const act = b.dataset.all;
+  if ((act === "remove" || act === "stop") && !confirm(act === "remove" ? "Xóa tất cả container proxy?" : "Tắt tất cả proxy?")) return;
+  run(b.textContent, () => api("POST", `/api/proxies/all/${act}`, {}));
+});
+$("#rows").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-act]"); if (!b) return;
+  const id = b.dataset.id, act = b.dataset.act;
+  if (act === "logs") { $("nav button[data-tab=logs]").click(); $("#lg-source").value = id; loadLogs(); return; }
+  if (act === "create") return run(`Tạo ${id}`, () => api("POST", "/api/create", { ids: [id] }));
+  if (act === "unconfig") { if (confirm(`Bỏ ${id} khỏi config.yaml?`)) run(`Bỏ ${id}`, () => api("DELETE", `/api/config/proxies/${id}`)); return; }
+  if (act === "remove" && !confirm(`Xóa container của proxy ${id}?`)) return;
+  run(`${b.textContent} ${id}`, () => api("POST", `/api/proxies/${id}/${act}`, {}));
+});
+
+// --- export
+async function loadExport() {
+  const q = new URLSearchParams({ format: $("#ex-format").value, host: $("#ex-host").value,
+    only_healthy: $("#ex-healthy").checked ? "1" : "0", auth: $("#ex-auth").checked ? "1" : "0" });
+  try { const out = await api("GET", "/api/export?" + q); $("#ex-out").textContent = typeof out === "string" ? out : JSON.stringify(out, null, 2); if (!$("#ex-out").textContent) $("#ex-out").textContent = "(trống — chưa có proxy khỏe nào)"; }
+  catch (e) { $("#ex-out").textContent = "Lỗi: " + e.message; }
+}
+["#ex-format", "#ex-healthy", "#ex-auth"].forEach(s => $(s).onchange = loadExport);
+$("#ex-host").oninput = () => { clearTimeout(window._exT); window._exT = setTimeout(loadExport, 400); };
+$("#ex-copy").onclick = async () => { await navigator.clipboard.writeText($("#ex-out").textContent); toast("Đã sao chép"); };
+$("#ex-download").onclick = () => {
+  const fmt = $("#ex-format").value, blob = new Blob([$("#ex-out").textContent], { type: "text/plain" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `proxies-${fmt}.${fmt === "json" ? "json" : "txt"}`; a.click();
+};
+
+// --- setup
+$("#cr-save").onclick = () => run("Lưu tài khoản", async () => {
+  const r = await api("POST", "/api/credentials", { user: $("#cr-user").value, password: $("#cr-pass").value });
+  if (r.ok) $("#cr-pass").value = ""; return r;
+});
+$("#ovpn-file").onchange = async (ev) => {
+  const files = Array.from(ev.target.files); if (!files.length) return;
+  await run(`Tải lên ${files.length} file`, async () => {
+    const results = [];
+    for (const f of files) {
+      try { await api("POST", "/api/ovpn", { filename: f.name, content: await f.text() }); results.push({ id: f.name, ok: true, message: `${f.name}: OK` }); }
+      catch (e) { results.push({ id: f.name, ok: false, message: `${f.name}: ${e.message}` }); }
+    }
+    await api("POST", "/api/reload", {});
+    return { results };
+  });
+  ev.target.value = "";
+};
+$("#ovpn-filter").oninput = renderOvpn;
+$("#ovpn-rows").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-del-ovpn]"); if (!b) return;
+  const n = b.dataset.delOvpn;
+  if (confirm(`Xóa file ${n}?`)) run(`Xóa ${n}`, async () => { const r = await api("DELETE", "/api/ovpn/" + encodeURIComponent(n)); await api("POST", "/api/reload", {}); return r; });
+});
+$("#ap-add").onclick = () => run("Thêm proxy", async () => {
+  const r = await api("POST", "/api/config/proxies", { id: $("#ap-id").value, ovpn: $("#ap-ovpn").value, port: $("#ap-port").value || null });
+  loadConfig(); if (r.ok) { $("#ap-id").value = ""; $("#ap-port").value = ""; } return r;
+});
+async function loadConfig() {
+  const c = await api("GET", "/api/config");
+  $("#cfg-text").value = c.yaml; $("#cfg-path").textContent = c.path;
+  $("#cfg-msg").innerHTML = c.error ? `<div class="alert bad">${esc(c.error)}</div>` : "";
+}
+$("#cfg-reload").onclick = loadConfig;
+$("#cfg-save").onclick = () => run("Lưu cấu hình", async () => {
+  const r = await api("POST", "/api/config", { yaml: $("#cfg-text").value });
+  $("#cfg-msg").innerHTML = r.ok ? `<div class="alert ok">Đã lưu, cấu hình hợp lệ.</div>` : `<div class="alert bad">Đã lưu nhưng còn lỗi: ${esc(r.error)}</div>`;
+  return r;
+});
+
+// --- logs
+async function loadLogs() {
+  const src = $("#lg-source").value || "__manager", tail = $("#lg-tail").value;
+  let url;
+  if (src === "__manager") url = `/api/logs?tail=${tail}`;
+  else { const [id, kind] = src.split("|"); url = `/api/proxies/${id}/logs?tail=${tail}${kind ? "&socks=1" : ""}`; }
+  try { const out = $("#lg-out"); const atBottom = out.scrollTop + out.clientHeight >= out.scrollHeight - 20;
+    out.textContent = (await api("GET", url)) || "(trống)"; if (atBottom) out.scrollTop = out.scrollHeight; }
+  catch (e) { $("#lg-out").textContent = "Lỗi: " + e.message; }
+}
+$("#lg-refresh").onclick = loadLogs; $("#lg-source").onchange = loadLogs; $("#lg-tail").onchange = loadLogs;
+setInterval(() => { if ($("#lg-auto").checked && !$("#tab-logs").classList.contains("hidden")) loadLogs(); }, 3000);
+
+refresh();
+setInterval(() => { if (!busy && !document.hidden) refresh(); }, 5000);
+</script>
+</body>
+</html>
