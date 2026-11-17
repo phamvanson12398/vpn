@@ -113,7 +113,7 @@ def test_web_starts_with_fresh_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(webmod.Monitor, "run_in_thread", lambda self: None)
     app = webmod.WebApp(tmp_path / "config.yaml")
     assert (tmp_path / "config.yaml").exists() and (tmp_path / ".env").exists()
-    assert app.config_error and "ovpn" in app.config_error
+    assert app.config_error is None and any(".ovpn" in w for w in app.warnings)
     assert app.status()["credentials_set"] is False
 
 

@@ -8,6 +8,15 @@ chcp 65001 >nul
 title HMA Proxy Manager
 cd /d "%~dp0"
 
+REM ---------- 0. Tool da chay ngam (tu chay khi bat may)? Chi can mo giao dien ----------
+powershell -NoProfile -Command "try{Invoke-WebRequest 'http://127.0.0.1:8800/api/status' -UseBasicParsing -TimeoutSec 2 | Out-Null; exit 0}catch{ if($_.Exception.Response){exit 0}; exit 1}" >nul 2>&1
+if not errorlevel 1 (
+  echo Tool dang chay san. Dang mo giao dien http://127.0.0.1:8800 ...
+  start "" "http://127.0.0.1:8800/"
+  timeout /t 3 >nul
+  exit /b 0
+)
+
 REM ---------- 1. Quyen Administrator (can de tao card mang ao + route VPN) ----------
 net session >nul 2>&1
 if errorlevel 1 (

@@ -27,7 +27,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "ovpn directory does not exist: {path}",
     },
     "ovpn_dir_empty": {
-        "vi": "Thư mục {path} không có file .ovpn nào. Hãy tải file OpenVPN từ tài khoản HMA vào đây.",
+        "vi": "Chưa có file .ovpn nào (thư mục {path}). Tải file OpenVPN từ tài khoản HMA rồi thêm ở tab Cài đặt › File .ovpn.",
         "en": "No .ovpn files found in {path}. Download the OpenVPN files from your HMA account into it.",
     },
     "ovpn_missing": {

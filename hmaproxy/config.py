@@ -291,7 +291,8 @@ def load_config(path: str | os.PathLike = "config.yaml", saved_plan: list[dict] 
         raise ConfigError(t("ovpn_dir_missing", path=cfg.ovpn_dir))
     cfg.servers = provider.list_servers(cfg.ovpn_dir)
     if not cfg.servers:
-        raise ConfigError(t("ovpn_dir_empty", path=cfg.ovpn_dir))
+        # Normal on first run: not an error, the UI guides the user to add files.
+        cfg.warnings.append(t("ovpn_dir_empty", path=cfg.ovpn_dir))
 
     cfg.proxies = _resolve_proxies(cfg, saved_plan)
     _validate_proxies(cfg)

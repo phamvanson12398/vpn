@@ -59,11 +59,16 @@ curl -x http://127.0.0.1:8881 https://api.ipify.org
 
 > **Cửa sổ đen của `start.bat` chính là chương trình.** Đóng cửa sổ này sẽ ngắt mọi VPN và proxy. Lần chạy sau, các proxy đang bật sẽ tự kết nối lại.
 
-### Tự chạy khi bật máy
+### Chạy như server: bật máy là tự chạy
 
-Chuột phải **`install-autostart.ps1`** › *Run with PowerShell*. Lệnh này tạo Scheduled Task chạy chương trình **ẩn, với quyền Administrator** mỗi khi bạn đăng nhập Windows, và tự chạy lại nếu bị tắt. Giao diện vẫn ở http://127.0.0.1:8800.
+1. Chạy `start.bat` một lần để cài Python/thư viện và cấu hình xong (tài khoản, file .ovpn, proxy). Sau đó đóng cửa sổ của nó.
+2. Nhấp đúp **`cai-tu-chay-khi-bat-may.bat`** và chọn Yes khi Windows hỏi quyền.
 
-Gỡ: `Unregister-ScheduledTask -TaskName "HMA Proxy Manager" -Confirm:$false`
+Từ đó tool chạy **ngầm**, không có cửa sổ, bằng tài khoản SYSTEM. Mỗi lần bật máy nó **tự chạy, không cần đăng nhập Windows**, và tự chạy lại nếu bị tắt. Các proxy đang bật sẽ tự kết nối lại.
+
+* Mở giao diện: lối tắt **HMA Proxy Manager** trên Desktop, hoặc http://127.0.0.1:8800. Nhấp `start.bat` lúc này cũng chỉ mở giao diện.
+* Nhật ký: `.hmaproxy\logs\hmaproxy.log`, hoặc tab Nhật ký trên giao diện.
+* Gỡ (dừng hẳn và thôi tự chạy): nhấp đúp **`go-tu-chay.bat`**.
 
 ## Giao diện web
 
