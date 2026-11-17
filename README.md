@@ -44,7 +44,7 @@ Trình duyệt / ứng dụng bình thường của bạn ──> mạng thật 
 
 1. Cài **OpenVPN Community** và **Python**.
 2. Tải mã nguồn này về (Code › Download ZIP rồi giải nén, hoặc `git clone`).
-3. Nhấp đúp **`start.bat`** và chọn **Yes** khi Windows hỏi quyền Administrator. Lần đầu sẽ cài thư viện Python, sau đó mở trình duyệt ở **http://127.0.0.1:8800**.
+3. Nhấp đúp **`start.bat`** và chọn **Yes** khi Windows hỏi quyền Administrator. File này tự kiểm tra Python và OpenVPN, đề nghị cài tự động bằng `winget` nếu thiếu, cài thư viện Python ở lần đầu, rồi mở trình duyệt ở **http://127.0.0.1:8800**.
 4. Làm theo khung **Bắt đầu** trên trang:
    1. Tab **Cài đặt › Tài khoản VPN HMA**: nhập username/password **VPN** (trong tài khoản HMA, phần cấu hình thủ công/OpenVPN; không phải email đăng nhập web).
    2. **File .ovpn**: tải các file OpenVPN từ HMA rồi upload (chọn được nhiều file), hoặc chép vào thư mục `ovpn\`.
