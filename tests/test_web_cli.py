@@ -107,6 +107,18 @@ def test_web_config_reload_keeps_running_tunnels(web, project):
     assert not res["ok"] and "max_connections" in res["error"]
 
 
+def test_web_switch_provider_to_expressvpn(web, project):
+    app, call, path = web
+    code, res = call("POST", "/api/provider", {"provider": "expressvpn"})
+    assert "provider: expressvpn" in path.read_text()
+    code, st = call("GET", "/api/status")
+    assert st["provider"]["name"] == "expressvpn" and st["credentials_set"] is False
+    code, res = call("POST", "/api/credentials", {"user": "evuser", "password": "evpass123"})
+    assert res["ok"] and "EXPRESSVPN_USER=evuser" in (project / ".env").read_text()
+    code, st = call("GET", "/api/status")
+    assert st["credentials_set"] and st["vpn_user"] == "evuser"
+
+
 def test_web_starts_with_fresh_folder(tmp_path, monkeypatch):
     from hmaproxy import web as webmod
 

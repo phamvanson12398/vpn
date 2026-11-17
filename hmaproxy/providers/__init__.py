@@ -3,10 +3,12 @@ from __future__ import annotations
 from ..errors import ConfigError
 from ..i18n import t
 from .base import Credentials, Server, VpnProvider, normalize_country
+from .expressvpn import ExpressVpnProvider
 from .hma import HmaProvider
 
 PROVIDERS: dict[str, type[VpnProvider]] = {
     HmaProvider.name: HmaProvider,
+    ExpressVpnProvider.name: ExpressVpnProvider,
 }
 
 

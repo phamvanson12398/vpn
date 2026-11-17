@@ -118,7 +118,7 @@ def test_connects_via_management_and_stops_gracefully(tmp_path, fake_exe):
     inst.start()
     assert _wait(lambda: inst.status == "connected"), (inst.status, list(inst.lines))
     assert inst.local_ip == "10.8.0.6" and inst.remote_ip == "1.2.3.4"
-    assert any('got "vpnuser"' in ln for ln in inst.lines)
+    assert _wait(lambda: any('got "vpnuser"' in ln for ln in inst.lines))  # stdout thread may lag
     # password never written to disk, never in captured output
     leftovers = " ".join(p.read_text(errors="ignore") for p in (tmp_path / "state").rglob("*") if p.is_file())
     assert SECRET not in leftovers and SECRET not in "\n".join(inst.lines)
@@ -134,6 +134,14 @@ def test_auth_failure_is_reported(tmp_path, fake_exe):
     inst.start()
     assert _wait(lambda: inst.status == "exited")
     assert "AUTH_FAILED" in inst.last_error
+
+
+def test_sanitize_fixes_options_removed_in_openvpn_26():
+    out = sanitize_ovpn("client\ncipher AES-256-CBC\nkeysize 256\nns-cert-type server\nremote x 1195\n", 9000)
+    active = [ln for ln in out.splitlines() if ln and not ln.startswith("#")]
+    assert "keysize 256" not in active and "ns-cert-type server" not in active
+    assert "remote-cert-tls server" in active
+    assert "data-ciphers-fallback AES-256-CBC" in active
 
 
 def test_state_line_parsing(tmp_path, fake_exe):

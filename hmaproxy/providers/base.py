@@ -64,6 +64,7 @@ class VpnProvider(ABC):
 
     #: name used in config.yaml ``provider:``
     name: str = ""
+    display_name: str = ""
     #: environment variables holding the VPN username / password
     user_env: str = ""
     pass_env: str = ""
@@ -84,10 +85,3 @@ class VpnProvider(ABC):
         same = [s for s in servers if s.country_key == current.country_key and s.filename not in exclude]
         same.sort(key=lambda s: (s.protocol != current.protocol, s.filename))
         return same
-
-    @abstractmethod
-    def gluetun_env(self, ovpn_container_path: str) -> dict[str, str]:
-        """Environment variables that make gluetun connect to this provider.
-
-        Must NOT contain secrets: credentials are passed as secret files.
-        """

@@ -60,7 +60,7 @@ class Monitor:
             in_grace = grace > 0 and bool(started) and now - float(started) < grace
 
             if r.leak:
-                # Should never happen with gluetun's kill switch - stop it and require a human.
+                # Should never happen (the proxy only sends through the tunnel) - stop it and require a human.
                 log.error(r.error or r.socks_error or "IP leak")
                 store.update_proxy(r.proxy_id, desired="stopped", health="failed", last_error=r.error or r.socks_error,
                                    last_check=now)

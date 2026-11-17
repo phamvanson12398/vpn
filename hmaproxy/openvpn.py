@@ -45,12 +45,16 @@ STRIP_DIRECTIVES = {
     "askpass", "auth-nocache", "status", "writepid", "cd", "chroot", "config", "service", "persist-tun",
     "block-ipv6",
 }
+# Options removed in OpenVPN 2.6 that make it refuse to start (found in older provider files).
+REMOVED_IN_26 = {"keysize", "ncp-disable", "prng", "no-iv", "no-replay", "tls-remote", "compat-names",
+                 "no-name-remapping", "data-ciphers-fallback", "data-ciphers", "ncp-ciphers"}
 INLINE_BLOCK_RE = re.compile(r"^<(/?)([a-z0-9-]+)>", re.IGNORECASE)
 
 
 def sanitize_ovpn(text: str, route_metric: int, extra_lines: list[str] | None = None) -> str:
     out: list[str] = []
     in_block: str | None = None
+    legacy_cipher: str | None = None
     for raw in text.replace("\r\n", "\n").split("\n"):
         line = raw.strip()
         m = INLINE_BLOCK_RE.match(line)
@@ -65,10 +69,18 @@ def sanitize_ovpn(text: str, route_metric: int, extra_lines: list[str] | None = 
         if not line or line.startswith(("#", ";")):
             out.append(raw)
             continue
-        directive = line.split()[0].lower().lstrip("-")
-        if directive in STRIP_DIRECTIVES:
+        parts = line.split()
+        directive = parts[0].lower().lstrip("-")
+        if directive in STRIP_DIRECTIVES or directive in REMOVED_IN_26:
             out.append(f"# [hmaproxy removed] {line}")
             continue
+        if directive == "ns-cert-type" and len(parts) > 1:
+            # removed in OpenVPN 2.6; modern equivalent
+            out.append(f"# [hmaproxy replaced] {line}")
+            out.append(f"remote-cert-tls {parts[1]}")
+            continue
+        if directive == "cipher" and len(parts) > 1:
+            legacy_cipher = parts[1]
         out.append(raw)
     out += [
         "",
@@ -89,6 +101,10 @@ def sanitize_ovpn(text: str, route_metric: int, extra_lines: list[str] | None = 
         "script-security 1",
         "persist-key",
     ]
+    if legacy_cipher and "GCM" not in legacy_cipher.upper() and "CHACHA" not in legacy_cipher.upper():
+        # Older provider files (e.g. ExpressVPN) use AES-256-CBC; OpenVPN 2.6 only negotiates it if listed.
+        out += [f"data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:{legacy_cipher}",
+                f"data-ciphers-fallback {legacy_cipher}"]
     out += list(extra_lines or [])
     return "\n".join(out) + "\n"
 

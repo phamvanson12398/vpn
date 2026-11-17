@@ -141,18 +141,21 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color:
   <!-- SETUP -->
   <section id="tab-setup" class="hidden">
     <div class="panel">
-      <h2>1. Tài khoản VPN HMA</h2>
-      <p class="muted">Dùng <b>username/password VPN</b> (trong tài khoản HMA, mục cấu hình thủ công / OpenVPN), không phải email đăng nhập web. Mật khẩu được lưu vào file <span class="mono">.env</span> và không bao giờ hiển thị lại.</p>
+      <h2>1. Tài khoản VPN</h2>
+      <div class="row" style="margin-bottom:10px">
+        <label style="flex-direction:row;align-items:center;gap:8px">Nhà cung cấp <select id="pv-select"></select></label>
+      </div>
+      <p class="muted" id="pv-help"></p>
       <div class="row">
-        <input id="cr-user" placeholder="HMA_USER" autocomplete="off">
-        <input id="cr-pass" type="password" placeholder="HMA_PASS" autocomplete="new-password">
+        <input id="cr-user" placeholder="username OpenVPN" autocomplete="off">
+        <input id="cr-pass" type="password" placeholder="password OpenVPN" autocomplete="new-password">
         <button class="btn primary" id="cr-save">Lưu</button>
         <span id="cr-state" class="muted"></span>
       </div>
     </div>
     <div class="panel">
-      <h2>2. File .ovpn của HMA</h2>
-      <p class="muted">Tải file OpenVPN từ tài khoản HMA rồi chọn ở đây (chọn được nhiều file), hoặc chép thẳng vào thư mục <span class="mono" id="ovpn-dir"></span>.</p>
+      <h2>2. File .ovpn</h2>
+      <p class="muted">Tải file OpenVPN từ tài khoản VPN rồi chọn ở đây (chọn được nhiều file), hoặc chép thẳng vào thư mục <span class="mono" id="ovpn-dir"></span>.</p>
       <div class="row" style="margin-bottom:10px">
         <input type="file" id="ovpn-file" accept=".ovpn" multiple>
         <input id="ovpn-filter" placeholder="Lọc theo tên / quốc gia">
@@ -252,12 +255,13 @@ function render() {
   $("#alerts").innerHTML = al.join("");
 
   // onboarding
+  const pvName = (s.provider && s.provider.display) || "VPN";
   const created = s.proxies.filter(p => p.created).length;
   const steps = [
     [!!sys.openvpn, "Cài OpenVPN Community (miễn phí) – openvpn.net/community-downloads"],
     [!!sys.admin, "Chạy chương trình bằng quyền Administrator (start.bat tự hỏi)"],
-    [s.credentials_set, "Nhập username/password VPN của HMA (tab Cài đặt)"],
-    [s.ovpn_files.length > 0, "Thêm file .ovpn tải từ HMA (tab Cài đặt)"],
+    [s.credentials_set, `Nhập username/password OpenVPN của ${pvName} (tab Cài đặt)`],
+    [s.ovpn_files.length > 0, `Thêm file .ovpn tải từ ${pvName} (tab Cài đặt)`],
     [!s.config_error && s.proxies.length > 0, "Chọn server cho từng proxy (tab Cài đặt › Thêm proxy)"],
     [created > 0, "Bấm “Tạo proxy”"],
   ];
@@ -297,6 +301,14 @@ function render() {
   }
 
   // setup tab
+  if (s.provider) {
+    const ps = $("#pv-select");
+    if (!ps.dataset.filled || ps.value !== s.provider.name) {
+      ps.innerHTML = s.provider.choices.map(c => `<option value="${esc(c.name)}">${esc(c.display)}</option>`).join("");
+      ps.value = s.provider.name; ps.dataset.filled = "1";
+    }
+    $("#pv-help").innerHTML = PV_HELP[s.provider.name] || "";
+  }
   $("#cr-state").innerHTML = s.credentials_set ? `<span class="badge ok">Đã lưu</span> ${esc(s.vpn_user)}` : `<span class="badge warn">Chưa có</span>`;
   if (!$("#cr-user").value && s.vpn_user) $("#cr-user").value = s.vpn_user;
   $("#ovpn-dir").textContent = s.ovpn_dir || "";
@@ -317,6 +329,11 @@ function render() {
     ? `Cổng xoay vòng: http://${st.bind_address === "0.0.0.0" ? "<ip máy này>" : st.bind_address}:${st.gateway_http_port}` + (st.socks5 ? ` · socks5://…:${st.gateway_socks_port}` : "") + ` — mỗi kết nối mới đi qua một proxy khỏe khác nhau.`
     : "Mẹo: bật gateway trong config.yaml để có một cổng duy nhất tự xoay vòng qua các proxy.";
 }
+
+const PV_HELP = {
+  hma: 'Dùng <b>username/password OpenVPN</b> trong tài khoản HMA (mục cấu hình thủ công), không phải email đăng nhập web. Mật khẩu lưu trong file <span class="mono">.env</span>, không bao giờ hiển thị lại.',
+  expressvpn: 'Vào <b>expressvpn.com</b> › Sign In › <b>Set up other devices</b> › <b>Manual Configuration</b> › tab <b>OpenVPN</b>. Chép <b>Username</b> và <b>Password</b> hiện ở đó (khác email/mật khẩu tài khoản) vào ô dưới, rồi tải các file <span class="mono">.ovpn</span> theo địa điểm ở danh sách bên dưới trang đó. Mật khẩu lưu trong <span class="mono">.env</span>, không bao giờ hiển thị lại.',
+};
 
 function renderOvpn() {
   const f = ($("#ovpn-filter").value || "").toLowerCase();
@@ -391,6 +408,7 @@ $("#ex-download").onclick = () => {
 };
 
 // --- setup
+$("#pv-select").onchange = (ev) => run("Đổi nhà cung cấp", () => api("POST", "/api/provider", { provider: ev.target.value }));
 $("#cr-save").onclick = () => run("Lưu tài khoản", async () => {
   const r = await api("POST", "/api/credentials", { user: $("#cr-user").value, password: $("#cr-pass").value });
   if (r.ok) $("#cr-pass").value = ""; return r;

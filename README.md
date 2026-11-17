@@ -40,6 +40,19 @@ Trình duyệt / ứng dụng bình thường của bạn ──> mạng thật 
 
 **Tắt ứng dụng HMA chính thức** khi dùng chương trình này: nó cũng chiếm một suất kết nối và có thể đổi đường mạng của máy.
 
+## Dùng với ExpressVPN
+
+Tool hỗ trợ cả **HMA** và **ExpressVPN**. Chọn nhà cung cấp ở tab **Cài đặt › Tài khoản VPN**, hoặc đặt `provider: expressvpn` trong `config.yaml`.
+
+Cách lấy file cấu hình ExpressVPN:
+
+1. Đăng nhập **expressvpn.com** › **Set up other devices** › **Manual Configuration** › tab **OpenVPN**.
+2. Chép **Username** và **Password** hiện ở đó vào tab **Cài đặt › Tài khoản VPN** của tool. Đây là thông tin riêng cho OpenVPN, **khác** email/mật khẩu tài khoản.
+3. Ngay bên dưới là danh sách địa điểm: tải các file `.ovpn` cần dùng (vd `my_expressvpn_japan_-_tokyo_udp.ovpn`), rồi upload ở **Cài đặt › File .ovpn**.
+4. Đặt `max_connections` bằng số thiết bị gói ExpressVPN của bạn cho phép (xem trong tài khoản).
+
+File của ExpressVPN dùng một số tùy chọn cũ (`keysize`, `ns-cert-type`, mã hóa AES-256-CBC) mà OpenVPN 2.6 không còn nhận. Tool tự sửa các dòng đó khi chạy, bạn không cần sửa file.
+
 ## Cài đặt và chạy
 
 1. Cài **OpenVPN Community** và **Python**.

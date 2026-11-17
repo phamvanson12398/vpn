@@ -7,10 +7,10 @@ from pathlib import Path
 
 CONFIG_TEMPLATE = """\
 # HMA Proxy Manager - cấu hình
-provider: hma
+provider: hma               # hma | expressvpn
 language: vi                # vi | en
-max_connections: 5          # theo gói HMA của bạn (5 hoặc 10)
-ovpn_dir: ./ovpn            # đặt các file .ovpn tải từ HMA vào đây
+max_connections: 5          # số kết nối cùng lúc gói VPN cho phép (HMA: 5/10, ExpressVPN: xem trong tài khoản)
+ovpn_dir: ./ovpn            # đặt các file .ovpn tải từ nhà cung cấp VPN vào đây
 bind_address: 127.0.0.1     # đổi thành 0.0.0.0 nếu muốn máy khác trong mạng dùng proxy
 base_port: 8881             # proxy HTTP: 8881, 8882, ...
 
@@ -71,9 +71,13 @@ proxies: []
 """
 
 ENV_TEMPLATE = """\
-# Thông tin đăng nhập VPN của HMA (không phải email/mật khẩu web).
+# Thông tin đăng nhập OpenVPN (loại cho cấu hình thủ công, KHÔNG phải email/mật khẩu web).
+# HMA:
 HMA_USER=
 HMA_PASS=
+# ExpressVPN (trang Manual Configuration > OpenVPN):
+EXPRESSVPN_USER=
+EXPRESSVPN_PASS=
 """
 
 

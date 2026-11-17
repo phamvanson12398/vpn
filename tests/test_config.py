@@ -132,6 +132,17 @@ def test_empty_proxy_list_is_allowed(write_config):
     assert cfg.proxies == [] and cfg.warnings
 
 
+def test_expressvpn_file_names():
+    from pathlib import Path
+
+    prov = get_provider("expressvpn")
+    s = prov.parse_server(Path("my_expressvpn_usa_-_new_york_udp.ovpn"))
+    assert (s.country, s.location, s.protocol) == ("USA", "USA - New York", "udp")
+    s = prov.parse_server(Path("my_expressvpn_japan_-_tokyo_tcp.ovpn"))
+    assert (s.country, s.protocol) == ("Japan", "tcp")
+    assert prov.user_env == "EXPRESSVPN_USER"
+
+
 def test_unknown_provider(write_config):
     with pytest.raises(ConfigError, match="Unsupported"):
         load_config(write_config(provider="nordvpn"))

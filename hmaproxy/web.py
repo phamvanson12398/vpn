@@ -38,6 +38,7 @@ from .gateway import Gateway, run_gateways_in_thread
 from .i18n import set_language, t
 from .logging_setup import get_logger, redact, register_secret, setup_logging
 from .monitor import Monitor
+from .providers import PROVIDERS, get_provider
 from .service import Manager, system_ok
 from .templates import init_project, set_env_values
 from .vpn_ctl import VpnController
@@ -196,8 +197,11 @@ class WebApp:
         out["ovpn_files"] = self._ovpn_files(ovpn_dir)
         env_path = mgr.cfg.env_file if mgr else self.base_dir / ".env"
         env = parse_env_file(env_path)
-        out["credentials_set"] = bool(env.get("HMA_USER") and env.get("HMA_PASS"))
-        out["vpn_user"] = env.get("HMA_USER", "")
+        prov = self._provider()
+        out["provider"] = {"name": prov.name, "display": prov.display_name,
+                           "choices": [{"name": k, "display": v().display_name} for k, v in sorted(PROVIDERS.items())]}
+        out["credentials_set"] = bool(env.get(prov.user_env) and env.get(prov.pass_env))
+        out["vpn_user"] = env.get(prov.user_env, "")
         if mgr is None:
             return out
         cfg = mgr.cfg
@@ -228,9 +232,7 @@ class WebApp:
     def _ovpn_files(self, ovpn_dir: Path) -> list[dict]:
         if not ovpn_dir.is_dir():
             return []
-        from .providers import get_provider
-
-        provider = self.mgr.cfg.provider if self.mgr else get_provider("hma")
+        provider = self._provider()
         return [{"filename": s.filename, "country": s.country, "location": s.location, "protocol": s.protocol}
                 for s in provider.list_servers(ovpn_dir)]
 
@@ -302,13 +304,14 @@ class WebApp:
     def save_credentials(self, body: dict) -> dict:
         user = str(body.get("user", "")).strip()
         password = str(body.get("password", ""))
+        prov = self._provider()
         if not user or not password:
-            return {"ok": False, "error": t("missing_credentials", names="HMA_USER, HMA_PASS")}
+            return {"ok": False, "error": t("missing_credentials", names=f"{prov.user_env}, {prov.pass_env}")}
         if "\n" in user or "\n" in password:
             return {"ok": False, "error": "invalid characters"}
         register_secret(password)
         env_path = self.mgr.cfg.env_file if self.mgr else self.base_dir / ".env"
-        set_env_values(env_path, {"HMA_USER": user, "HMA_PASS": password})
+        set_env_values(env_path, {prov.user_env: user, prov.pass_env: password})
         self.log.info("VPN credentials updated (user=%s)", user)
         return {"ok": True}
 
@@ -332,6 +335,26 @@ class WebApp:
             raise NotFoundError(name)
         path.unlink()
         return {"ok": True}
+
+    def _provider(self):
+        if self.mgr is not None:
+            return self.mgr.cfg.provider
+        try:
+            data = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}
+            return get_provider(str(data.get("provider", "hma")))
+        except Exception:  # noqa: BLE001
+            return get_provider("hma")
+
+    def set_provider(self, body: dict) -> dict:
+        name = str(body.get("provider", "")).lower()
+        if name not in PROVIDERS:
+            return {"ok": False, "error": t("unknown_provider", name=name, supported=", ".join(sorted(PROVIDERS)))}
+        text = self.config_path.read_text(encoding="utf-8")
+        if re.search(r"^provider:.*$", text, flags=re.M):
+            text = re.sub(r"^provider:.*$", f"provider: {name}", text, count=1, flags=re.M)
+        else:
+            text = f"provider: {name}\n" + text
+        return self.save_config(text)
 
     def manager_log(self, tail: int) -> str:
         path = (self.mgr.cfg.state_dir / self.mgr.cfg.log.file) if self.mgr else self.base_dir / ".hmaproxy/logs/hmaproxy.log"
@@ -488,6 +511,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._run(lambda: app.save_config(str(body.get("yaml", ""))))
         if path == "/api/config/proxies":
             return self._run(lambda: app.add_proxy(body))
+        if path == "/api/provider":
+            return self._run(lambda: app.set_provider(body))
         if path == "/api/credentials":
             return self._run(lambda: app.save_credentials(body))
         if path == "/api/ovpn":

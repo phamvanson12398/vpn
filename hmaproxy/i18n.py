@@ -27,16 +27,16 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "ovpn directory does not exist: {path}",
     },
     "ovpn_dir_empty": {
-        "vi": "Chưa có file .ovpn nào (thư mục {path}). Tải file OpenVPN từ tài khoản HMA rồi thêm ở tab Cài đặt › File .ovpn.",
-        "en": "No .ovpn files found in {path}. Download the OpenVPN files from your HMA account into it.",
+        "vi": "Chưa có file .ovpn nào (thư mục {path}). Tải file OpenVPN từ tài khoản VPN của bạn rồi thêm ở tab Cài đặt › File .ovpn.",
+        "en": "No .ovpn files found in {path}. Download the OpenVPN files from your VPN account and add them in Settings › .ovpn files.",
     },
     "ovpn_missing": {
         "vi": "Proxy '{id}': không tìm thấy file .ovpn '{ovpn}' trong {dir}",
         "en": "Proxy '{id}': .ovpn file '{ovpn}' not found in {dir}",
     },
     "too_many_proxies": {
-        "vi": "Cấu hình có {count} proxy nhưng max_connections = {max}. Gói HMA của bạn chỉ cho phép {max} kết nối cùng lúc; hãy bớt proxy hoặc tăng max_connections nếu gói cho phép.",
-        "en": "Config defines {count} proxies but max_connections = {max}. Your HMA plan only allows {max} simultaneous connections; remove proxies or raise max_connections if your plan allows it.",
+        "vi": "Cấu hình có {count} proxy nhưng max_connections = {max}. Gói VPN của bạn chỉ cho phép {max} kết nối cùng lúc; hãy bớt proxy hoặc tăng max_connections nếu gói cho phép.",
+        "en": "Config defines {count} proxies but max_connections = {max}. Your VPN plan only allows {max} simultaneous connections; remove proxies or raise max_connections if your plan allows it.",
     },
     "duplicate_id": {
         "vi": "Trùng id proxy: '{id}'",
@@ -105,8 +105,8 @@ MESSAGES: dict[str, dict[str, str]] = {
     },
     "vpn_start_failed": {"vi": "Không chạy được openvpn.exe: {error}", "en": "Could not start openvpn.exe: {error}"},
     "vpn_auth_failed": {
-        "vi": "HMA từ chối đăng nhập (AUTH_FAILED): kiểm tra username/password VPN, hoặc đã vượt số thiết bị cho phép",
-        "en": "HMA rejected the login (AUTH_FAILED): check the VPN username/password, or the device limit was exceeded",
+        "vi": "Nhà cung cấp VPN từ chối đăng nhập (AUTH_FAILED): kiểm tra username/password VPN (loại dành cho cấu hình thủ công/OpenVPN), hoặc đã vượt số thiết bị cho phép",
+        "en": "The VPN provider rejected the login (AUTH_FAILED): check the VPN username/password, or the device limit was exceeded",
     },
     "vpn_exited": {"vi": "openvpn.exe đã thoát (mã {code})", "en": "openvpn.exe exited (code {code})"},
     "vpn_connected": {"vi": "VPN đã kết nối: IP tunnel {ip}, server {server}", "en": "VPN connected: tunnel IP {ip}, server {server}"},
