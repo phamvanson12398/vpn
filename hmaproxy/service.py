@@ -7,12 +7,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .config import AppConfig, load_config, load_credentials
-from .docker_ctl import ContainerInfo, DockerController, uptime_seconds
-from .errors import DockerError, HmaProxyError, NotFoundError
+from .errors import HmaProxyError, NotFoundError
 from .health import CheckResult, check_many, get_real_ip
 from .i18n import t
 from .logging_setup import get_logger, register_secret
 from .state import StateStore
+from .vpn_ctl import InstanceInfo, VpnController, uptime_seconds
 
 
 @dataclass
@@ -32,10 +32,10 @@ class CreateReport:
 
 
 class Manager:
-    def __init__(self, cfg: AppConfig, ctl: DockerController | None = None, store: StateStore | None = None):
+    def __init__(self, cfg: AppConfig, ctl: VpnController | None = None, store: StateStore | None = None):
         self.cfg = cfg
-        self.ctl = ctl or DockerController(cfg)
         self.store = store or StateStore(cfg.state_dir)
+        self.ctl = ctl or VpnController(cfg, self.store, credentials=lambda: load_credentials(self.cfg))
         if cfg.proxy_auth.enabled:
             register_secret(cfg.proxy_auth.password)
 
@@ -86,6 +86,8 @@ class Manager:
 
         existing = self.ctl.list_managed()
         wanted = [p for p in cfg.proxies if ids is None or p.id in ids]
+        if not wanted:
+            return CreateReport()
         to_create = [p for p in wanted if p.id not in existing]
         if len(existing) + len(to_create) > cfg.max_connections:
             raise HmaProxyError(t("over_limit_running", existing=len(existing), new=len(to_create),
@@ -94,12 +96,7 @@ class Manager:
         report = CreateReport()
         for p in wanted:
             if p.id in existing:
-                report.results.append(ActionResult(p.id, True, t("container_exists", id=p.id,
-                                                                  name=self.ctl.vpn_name(p.id))))
-        if to_create:
-            self.ctl.ensure_image(cfg.gluetun_image)
-            if cfg.socks5.enabled:
-                self.ctl.ensure_image(cfg.socks5.image)
+                report.results.append(ActionResult(p.id, True, t("container_exists", id=p.id, name=p.id)))
         with self.store.transaction() as data:
             if cfg.selection.mode == "random":
                 data["plan"] = [{"id": p.id, "ovpn": p.ovpn, "country": p.country} for p in cfg.proxies]
@@ -114,9 +111,10 @@ class Manager:
                 continue
             now = time.time()
             with self.store.transaction() as data:
-                data["proxies"].pop(p.id, None)
-                self.store.proxy(data, p.id).update(desired="running", health="starting", started_at=now,
-                                                    ovpn=p.ovpn, tried_servers=[p.ovpn])
+                self.store.proxy(data, p.id).update(
+                    desired="running", health="starting", started_at=now, ovpn=p.ovpn, tried_servers=[p.ovpn],
+                    ip=None, consecutive_failures=0, restart_attempts=0, server_switches=0, next_attempt_at=0.0,
+                    last_error=None)
             report.results.append(ActionResult(p.id, True, t("created", id=p.id, country=p.country, ovpn=p.ovpn,
                                                              bind=cfg.bind_address, port=p.http_port)))
         return report
@@ -179,6 +177,7 @@ class Manager:
         def do(pid):
             self.ctl.remove(pid)
             self.store.drop_proxy(pid)
+            get_logger(pid).info(t("removed", id=pid))
 
         return self._each("remove", ids, do)
 
@@ -198,19 +197,16 @@ class Manager:
         return ip
 
     def rows(self, with_containers: bool = True) -> list[dict[str, Any]]:
-        """One row per proxy for the table in the UI / `list`.
-
-        ``with_containers=False`` lists configured proxies only (Docker unreachable).
-        """
+        """One row per proxy for the UI table / `list`."""
         infos = self.ctl.list_managed() if with_containers else {}
         data = self.store.load()
         ids = sorted(set(infos) | {p.id for p in self.cfg.proxies})
         out = []
         for pid in ids:
-            info: ContainerInfo | None = infos.get(pid)
+            info: InstanceInfo | None = infos.get(pid)
             spec = self.cfg.proxy(pid)
             st = data["proxies"].get(pid, {})
-            status = info.status if info else ("not created" if with_containers else "unknown")
+            status = info.status if info else "not created"
             health = st.get("health", "unknown") if info else "-"
             if info and not info.running and st.get("desired") == "stopped":
                 health = "stopped"
@@ -221,14 +217,16 @@ class Manager:
                 "http_port": (info.http_port if info else None) or (spec.http_port if spec else None),
                 "socks_port": (info.socks_port if info else None) or (spec.socks_port if spec else None),
                 "status": status,
-                "socks_status": info.socks_status if info else None,
+                "vpn_state": info.state_name if info else "",
+                "tunnel_ip": info.local_ip if info else None,
+                "vpn_server": info.remote_ip if info else None,
                 "health": health,
                 "desired": st.get("desired", "running"),
                 "ip": st.get("ip"),
                 "socks_ok": st.get("socks_ok"),
                 "last_check": st.get("last_check"),
-                "last_error": st.get("last_error"),
-                "uptime": uptime_seconds(info.started_at) if info and info.running else None,
+                "last_error": (info.last_error if info and info.last_error else None) or st.get("last_error"),
+                "uptime": uptime_seconds(info.connected_at) if info else None,
                 "in_config": spec is not None,
                 "created": info is not None,
             })
@@ -242,8 +240,8 @@ class Manager:
         results: list[CheckResult] = []
         for pid in ids:
             info = infos.get(pid)
-            if info is None or not info.running or not info.http_port:
-                results.append(CheckResult(pid, False, error=f"container {info.status if info else 'missing'}"))
+            if info is None or info.status != "connected" or not info.http_port:
+                results.append(CheckResult(pid, False, error=f"VPN {info.status if info else 'missing'}"))
                 continue
             targets.append((pid, info.http_port, info.socks_port))
         results += check_many(self.cfg, targets, real_ip)
@@ -271,13 +269,13 @@ class Manager:
             raise NotFoundError(t("proxy_not_found", id=proxy_id))
         from .logging_setup import redact
 
-        return redact("".join(self.ctl.logs(proxy_id, tail=tail, socks=socks)))
+        return redact("\n".join(self.ctl.logs(proxy_id, tail=tail)))
 
     def healthy_backends(self, kind: str = "http") -> list[tuple[str, int]]:
         host = self.cfg.connect_host
         out = []
         for r in self.rows():
-            if r["status"] != "running" or r["health"] != "healthy":
+            if r["status"] != "connected" or r["health"] != "healthy":
                 continue
             port = r["http_port"] if kind == "http" else r["socks_port"]
             if port:
@@ -285,9 +283,11 @@ class Manager:
         return out
 
 
-def docker_ok(mgr: Manager) -> tuple[bool, str]:
+def system_ok(mgr: Manager) -> tuple[bool, str, dict]:
+    """Can tunnels be started on this PC? (OpenVPN installed, running as admin)."""
+    info = mgr.ctl.system_status()
     try:
-        mgr.ctl.client.ping()
-        return True, ""
-    except (DockerError, Exception) as exc:  # noqa: BLE001
-        return False, str(exc)
+        mgr.ctl.preflight()
+        return True, "", info
+    except HmaProxyError as exc:
+        return False, str(exc), info

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import itertools
+import random
 import sys
+import time
 from pathlib import Path
 
-import docker.errors
 import pytest
 import yaml
 
@@ -19,98 +19,67 @@ OVPN_FILES = [
 SECRET = "S3cr3t-HMA-pass!"
 
 
-class FakeContainer:
-    _ids = itertools.count(1)
+class FakeInstance:
+    """Stands in for OpenVPNInstance: 'connects' instantly with tunnel IP 127.0.0.1."""
 
-    def __init__(self, client, image, name, labels=None, **kwargs):
-        self.client = client
-        self.image = image
-        self.name = name
-        self.labels = labels or {}
-        self.kwargs = kwargs
-        self.status = "created"
-        self.id = f"c{next(self._ids)}"
+    def __init__(self, spec, server):
+        self.id = spec.id
+        self.server = server
+        self.status = "stopped"
+        self.state_name = ""
+        self.local_ip = None
+        self.remote_ip = None
+        self.started_at = None
+        self.connected_at = None
+        self.last_error = None
+        self.lines = [f"connecting with password={SECRET}"]
         self.calls = []
+        self._pid = None
 
     @property
-    def attrs(self):
-        running = self.status == "running"
-        return {"State": {"Running": running, "StartedAt": "2026-01-01T00:00:00.123456789Z" if running else "0001-01-01T00:00:00Z"},
-                "Config": {"Labels": self.labels}}
-
-    def reload(self):
-        pass
+    def pid(self):
+        return self._pid
 
     def start(self):
         self.calls.append("start")
-        self.status = "running"
+        self.status = "connected"
+        self.state_name = "CONNECTED"
+        self.local_ip = "127.0.0.1"
+        self.remote_ip = "203.0.113.9"
+        self.started_at = self.connected_at = time.time()
+        self._pid = 4242
 
-    def stop(self, timeout=10):
+    def stop(self, timeout=10.0):
         self.calls.append("stop")
+        self.status = "stopped"
+        self.local_ip = None
+        self.connected_at = None
+
+    def restart(self):
+        self.stop()
+        self.start()
+
+    def crash(self):
         self.status = "exited"
-
-    def restart(self, timeout=10):
-        self.calls.append("restart")
-        self.status = "running"
-
-    def remove(self, force=False):
-        self.calls.append("remove")
-        self.client.containers.items.pop(self.name, None)
-
-    def logs(self, tail=100, timestamps=False, stream=False, follow=False):
-        text = f"log line for {self.name} password={SECRET}\n".encode()
-        return iter([text]) if stream else text
+        self.local_ip = None
 
 
-class FakeContainers:
-    def __init__(self, client):
-        self.client = client
-        self.items: dict[str, FakeContainer] = {}
+def free_base_port(count=12):
+    import socket
 
-    def create(self, image, name=None, labels=None, **kwargs):
-        if name in self.items:
-            raise docker.errors.APIError("Conflict")
-        c = FakeContainer(self.client, image, name, labels, **kwargs)
-        self.items[name] = c
-        return c
-
-    def get(self, name):
-        try:
-            return self.items[name]
-        except KeyError:
-            raise docker.errors.NotFound(f"No such container: {name}") from None
-
-    def list(self, all=False, filters=None):
-        wanted = dict(f.split("=", 1) for f in (filters or {}).get("label", []))
-        return [c for c in self.items.values()
-                if (all or c.status == "running") and _labels_match(c.labels, wanted)]
-
-
-def _labels_match(labels, wanted):
-    return all(labels.get(k) == v for k, v in wanted.items())
-
-
-class FakeImages:
-    def __init__(self):
-        self.pulled = []
-        self.present = set()
-
-    def get(self, image):
-        if image not in self.present:
-            raise docker.errors.ImageNotFound(image)
-
-    def pull(self, image):
-        self.pulled.append(image)
-        self.present.add(image)
-
-
-class FakeDocker:
-    def __init__(self):
-        self.containers = FakeContainers(self)
-        self.images = FakeImages()
-
-    def ping(self):
-        return True
+    for _ in range(50):
+        base = random.randint(20000, 50000)
+        ok = True
+        for port in range(base, base + count):
+            with socket.socket() as s:
+                try:
+                    s.bind(("127.0.0.1", port))
+                except OSError:
+                    ok = False
+                    break
+        if ok:
+            return base
+    raise RuntimeError("no free ports")
 
 
 @pytest.fixture(autouse=True)
@@ -141,7 +110,7 @@ def write_config(project):
             "max_connections": 5,
             "ovpn_dir": "./ovpn",
             "bind_address": "127.0.0.1",
-            "base_port": 8881,
+            "base_port": free_base_port(),
             "language": "en",
             "health_check": {"interval_seconds": 60, "failure_threshold": 3, "startup_grace_seconds": 0},
             "recovery": {"max_restarts": 2, "backoff_base_seconds": 30, "backoff_max_seconds": 600},
@@ -166,22 +135,46 @@ def write_config(project):
 
 
 @pytest.fixture
-def fake_docker():
-    return FakeDocker()
+def instances():
+    """All FakeInstances created during a test, by proxy id (latest wins)."""
+    return {}
 
 
 @pytest.fixture
-def manager(write_config, fake_docker, monkeypatch):
-    from hmaproxy import docker_ctl
-    from hmaproxy.service import Manager
-    from hmaproxy.docker_ctl import DockerController
+def hub():
+    from hmaproxy.proxy_server import ProxyHub
 
-    monkeypatch.setattr(docker_ctl.DockerController, "preflight", lambda self: None)
+    h = ProxyHub()
+    yield h
+    h.stop()
+
+
+@pytest.fixture
+def make_ctl(instances, hub):
+    from hmaproxy.config import load_credentials
+    from hmaproxy.state import StateStore
+    from hmaproxy.vpn_ctl import VpnController
+
+    def make(cfg, store=None):
+        def factory(spec, server):
+            inst = FakeInstance(spec, server)
+            instances[spec.id] = inst
+            return inst
+
+        return VpnController(cfg, store or StateStore(cfg.state_dir), credentials=lambda: load_credentials(cfg),
+                             hub=hub, instance_factory=factory, check_system=False)
+
+    return make
+
+
+@pytest.fixture
+def manager(write_config, make_ctl):
+    from hmaproxy.config import load_config
+    from hmaproxy.service import Manager
 
     def make(**overrides):
-        path = write_config(**overrides)
-        mgr = Manager.from_path(str(path))
-        mgr.ctl = DockerController(mgr.cfg, client=fake_docker)
-        return mgr
+        cfg = load_config(write_config(**overrides))
+        ctl = make_ctl(cfg)
+        return Manager(cfg, ctl=ctl, store=ctl.store)
 
     return make

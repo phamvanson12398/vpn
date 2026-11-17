@@ -69,7 +69,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color:
 <header>
   <h1>HMA Proxy Manager</h1>
   <div class="meta">
-    <span id="m-docker">Docker: …</span>
+    <span id="m-docker">OpenVPN: …</span>
     <span id="m-realip"></span>
     <span id="m-monitor"></span>
   </div>
@@ -104,7 +104,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color:
       <div class="tablewrap">
         <table>
           <thead><tr>
-            <th>ID</th><th>Quốc gia / server</th><th>Cổng</th><th>Container</th><th>Sức khỏe</th>
+            <th>ID</th><th>Quốc gia / server</th><th>Cổng</th><th>VPN</th><th>Sức khỏe</th>
             <th>IP ra ngoài</th><th>Thời gian chạy</th><th></th>
           </tr></thead>
           <tbody id="rows"><tr><td colspan="8" class="muted">Đang tải…</td></tr></tbody>
@@ -182,7 +182,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color:
       </div>
       <div id="cfg-msg"></div>
       <textarea id="cfg-text" rows="26" spellcheck="false"></textarea>
-      <p class="muted">Đổi <span class="mono">bind_address</span>, <span class="mono">socks5</span>, <span class="mono">proxy_auth</span> chỉ áp dụng cho proxy tạo mới: hãy Xóa rồi Tạo lại proxy. Đổi <span class="mono">web</span> hoặc <span class="mono">gateway</span> cần khởi động lại chương trình.</p>
+      <p class="muted">Đổi <span class="mono">bind_address</span>, <span class="mono">socks5</span>, <span class="mono">proxy_auth</span>: bấm Restart proxy để áp dụng; đổi cổng/server của proxy đã tạo: Xóa rồi Tạo lại. Đổi <span class="mono">web</span> hoặc <span class="mono">gateway</span> cần khởi động lại chương trình.</p>
     </div>
   </section>
 
@@ -233,26 +233,29 @@ const HEALTH = {
   healthy: ["ok", "Khỏe"], starting: ["warn", "Đang kết nối"], unhealthy: ["bad", "Hỏng"],
   failed: ["bad", "FAILED"], stopped: ["", "Đã tắt"], unknown: ["", "Chưa kiểm tra"], "-": ["", "—"],
 };
-const STATUS = { running: "ok", exited: "bad", restarting: "warn", created: "", "not created": "", missing: "bad", unknown: "" };
+const STATUS = { connected: "ok", connecting: "warn", exited: "bad", stopped: "", "not created": "", missing: "bad" };
+const STATUS_VI = { connected: "đã kết nối", connecting: "đang kết nối", exited: "đã thoát", stopped: "đã tắt", "not created": "chưa tạo", missing: "?" };
 
 function render() {
   const s = state; if (!s) return;
-  $("#m-docker").innerHTML = s.docker.ok ? 'Docker: <span class="badge ok">OK</span>' : 'Docker: <span class="badge bad">không kết nối</span>';
+  const sys = s.system || {};
+  $("#m-docker").innerHTML = sys.ok ? `OpenVPN: <span class="badge ok">sẵn sàng</span>` : `OpenVPN: <span class="badge bad">${sys.openvpn ? (sys.admin ? "lỗi" : "thiếu quyền Admin") : "chưa cài"}</span>`;
   $("#m-realip").textContent = s.real_ip ? `IP thật: ${s.real_ip}` : "";
   $("#m-monitor").textContent = s.monitor ? `Giám sát: ${s.monitor.running ? "đang chạy" : "dừng"}${s.monitor.last_tick ? " · " + ago(s.monitor.last_tick) : ""}` : "";
 
   // alerts
   const al = [];
   if (s.config_error) al.push(`<div class="alert bad"><b>Cấu hình chưa hợp lệ:</b> ${esc(s.config_error)}</div>`);
-  if (!s.config_error && !s.docker.ok) al.push(`<div class="alert bad"><b>Không kết nối được Docker.</b> Hãy cài và mở Docker Desktop (chế độ WSL 2), rồi đợi biểu tượng Docker báo “running”.<div style="font-size:12.5px;opacity:.8;margin-top:4px">${esc(s.docker.error || "")}</div></div>`);
+  if (!s.config_error && !sys.ok) al.push(`<div class="alert bad">${esc(sys.error || "")}</div>`);
   for (const w of s.warnings || []) al.push(`<div class="alert warn">${esc(w)}</div>`);
-  if (s.docker.ok && s.monitor && s.monitor.last_error) al.push(`<div class="alert warn">Giám sát: ${esc(s.monitor.last_error)}</div>`);
+  if (sys.ok && s.monitor && s.monitor.last_error) al.push(`<div class="alert warn">Giám sát: ${esc(s.monitor.last_error)}</div>`);
   $("#alerts").innerHTML = al.join("");
 
   // onboarding
   const created = s.proxies.filter(p => p.created).length;
   const steps = [
-    [s.docker.ok, "Cài và mở Docker Desktop (Windows, chế độ WSL 2)"],
+    [!!sys.openvpn, "Cài OpenVPN Community (miễn phí) – openvpn.net/community-downloads"],
+    [!!sys.admin, "Chạy chương trình bằng quyền Administrator (start.bat tự hỏi)"],
     [s.credentials_set, "Nhập username/password VPN của HMA (tab Cài đặt)"],
     [s.ovpn_files.length > 0, "Thêm file .ovpn tải từ HMA (tab Cài đặt)"],
     [!s.config_error && s.proxies.length > 0, "Chọn server cho từng proxy (tab Cài đặt › Thêm proxy)"],
@@ -271,10 +274,10 @@ function render() {
     $("#rows").innerHTML = rows.map(p => {
       const [hc, hl] = HEALTH[p.health] || ["", p.health];
       const ports = [`HTTP ${p.http_port ?? "?"}`].concat(p.socks_port ? [`SOCKS5 ${p.socks_port}`] : []).join("<br>");
-      const socksBadge = p.socks_status && p.socks_status !== "running" ? ` <span class="badge bad">socks ${esc(p.socks_status)}</span>` : "";
-      const actions = !s.docker.ok ? "" : p.created
+      const running = p.status === "connected" || p.status === "connecting";
+      const actions = p.created
         ? `<button class="btn sm" data-act="check" data-id="${esc(p.id)}">Kiểm tra</button>
-           ${p.status === "running" ? `<button class="btn sm" data-act="restart" data-id="${esc(p.id)}">Restart</button>
+           ${running ? `<button class="btn sm" data-act="restart" data-id="${esc(p.id)}">Restart</button>
            <button class="btn sm" data-act="stop" data-id="${esc(p.id)}">Tắt</button>` : `<button class="btn sm" data-act="start" data-id="${esc(p.id)}">Bật</button>`}
            <button class="btn sm" data-act="logs" data-id="${esc(p.id)}">Log</button>
            <button class="btn sm danger" data-act="remove" data-id="${esc(p.id)}">Xóa</button>`
@@ -284,7 +287,7 @@ function render() {
         <td><b>${esc(p.id)}</b></td>
         <td>${esc(p.country)}<div class="muted mono" style="font-size:12px">${esc(p.ovpn)}</div></td>
         <td class="mono">${ports}</td>
-        <td><span class="badge ${STATUS[p.status] ?? ""}">${esc(p.status)}</span>${socksBadge}</td>
+        <td><span class="badge ${STATUS[p.status] ?? ""}" title="${esc(p.vpn_state || "")}">${esc(STATUS_VI[p.status] || p.status)}</span>${p.tunnel_ip ? `<div class="muted mono" style="font-size:12px">tunnel ${esc(p.tunnel_ip)}</div>` : ""}</td>
         <td><span class="badge ${hc}">${esc(hl)}</span>${p.last_error && p.health !== "healthy" ? `<div class="err">${esc(p.last_error)}</div>` : ""}</td>
         <td class="mono">${esc(p.ip || "—")}<div class="muted" style="font-size:12px">${esc(ago(p.last_check))}</div></td>
         <td>${fmtUptime(p.uptime)}</td>
@@ -305,7 +308,7 @@ function render() {
   // logs source list
   const ls = $("#lg-source"), lcur = ls.value;
   ls.innerHTML = `<option value="__manager">Manager (chương trình này)</option>` +
-    rows.filter(p => p.created).map(p => `<option value="${esc(p.id)}">VPN ${esc(p.id)}</option>` + (p.socks_port ? `<option value="${esc(p.id)}|socks">SOCKS5 ${esc(p.id)}</option>` : "")).join("");
+    rows.filter(p => p.created).map(p => `<option value="${esc(p.id)}">OpenVPN ${esc(p.id)}</option>`).join("");
   if (lcur) ls.value = lcur;
 
   // gateway hint
@@ -356,10 +359,10 @@ $$("nav button").forEach(b => b.onclick = () => {
 });
 
 // --- proxy actions
-$("#btn-create").onclick = () => run("Đang tạo proxy (lần đầu cần tải image, có thể mất vài phút)", () => api("POST", "/api/create", {}));
+$("#btn-create").onclick = () => run("Đang tạo proxy (tạo card mạng ảo + kết nối VPN)", () => api("POST", "/api/create", {}));
 $$("[data-all]").forEach(b => b.onclick = () => {
   const act = b.dataset.all;
-  if ((act === "remove" || act === "stop") && !confirm(act === "remove" ? "Xóa tất cả container proxy?" : "Tắt tất cả proxy?")) return;
+  if ((act === "remove" || act === "stop") && !confirm(act === "remove" ? "Xóa tất cả proxy (ngắt VPN, xóa card mạng ảo)?" : "Tắt tất cả proxy?")) return;
   run(b.textContent, () => api("POST", `/api/proxies/all/${act}`, {}));
 });
 $("#rows").addEventListener("click", (ev) => {
@@ -368,7 +371,7 @@ $("#rows").addEventListener("click", (ev) => {
   if (act === "logs") { $("nav button[data-tab=logs]").click(); $("#lg-source").value = id; loadLogs(); return; }
   if (act === "create") return run(`Tạo ${id}`, () => api("POST", "/api/create", { ids: [id] }));
   if (act === "unconfig") { if (confirm(`Bỏ ${id} khỏi config.yaml?`)) run(`Bỏ ${id}`, () => api("DELETE", `/api/config/proxies/${id}`)); return; }
-  if (act === "remove" && !confirm(`Xóa container của proxy ${id}?`)) return;
+  if (act === "remove" && !confirm(`Xóa proxy ${id} (ngắt VPN, xóa card mạng ảo)?`)) return;
   run(`${b.textContent} ${id}`, () => api("POST", `/api/proxies/${id}/${act}`, {}));
 });
 

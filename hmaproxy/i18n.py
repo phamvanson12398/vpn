@@ -86,27 +86,51 @@ MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Cấu hình hợp lệ: {count} proxy, max_connections = {max}",
         "en": "Config is valid: {count} proxies, max_connections = {max}",
     },
-    # --- docker ---
-    "docker_unavailable": {
-        "vi": "Không kết nối được Docker: {error}. Docker đã chạy chưa, user có quyền dùng Docker không?",
-        "en": "Cannot connect to Docker: {error}. Is Docker running and does this user have permission to use it?",
+    # --- openvpn / system ---
+    "openvpn_missing": {
+        "vi": "Chưa cài OpenVPN. Tải OpenVPN Community (bản Windows 64-bit, miễn phí) tại https://openvpn.net/community-downloads/ rồi cài với các tùy chọn mặc định (có TAP-Windows6).",
+        "en": "OpenVPN is not installed. Get OpenVPN Community for Windows (64-bit, free) from https://openvpn.net/community-downloads/ and install it with default options (including TAP-Windows6).",
     },
-    "docker_sdk_missing": {
-        "vi": "Chưa cài thư viện Python 'docker': pip install -r requirements.txt",
-        "en": "Python package 'docker' is not installed: pip install -r requirements.txt",
+    "need_admin": {
+        "vi": "Cần chạy chương trình bằng quyền Administrator (để tạo card mạng ảo và route cho VPN). Hãy mở bằng start.bat, chọn Yes khi Windows hỏi.",
+        "en": "Administrator rights are required (to create virtual adapters and VPN routes). Start via start.bat and accept the UAC prompt.",
     },
-    "tun_missing": {
-        "vi": "Không có thiết bị /dev/net/tun trên máy; gluetun cần thiết bị này",
-        "en": "/dev/net/tun is missing on this host; gluetun needs it",
+    "tapctl_missing": {
+        "vi": "Không tìm thấy tapctl.exe trong thư mục OpenVPN; hãy cài lại OpenVPN Community",
+        "en": "tapctl.exe not found next to openvpn.exe; reinstall OpenVPN Community",
     },
-    "pulling_image": {"vi": "Đang tải image {image} ...", "en": "Pulling image {image} ..."},
+    "tapctl_failed": {
+        "vi": "Không tạo được card mạng ảo: {error}. Kiểm tra driver (openvpn.driver trong config) đã được cài cùng OpenVPN.",
+        "en": "Could not create the virtual adapter: {error}. Check that the driver (openvpn.driver) was installed with OpenVPN.",
+    },
+    "vpn_start_failed": {"vi": "Không chạy được openvpn.exe: {error}", "en": "Could not start openvpn.exe: {error}"},
+    "vpn_auth_failed": {
+        "vi": "HMA từ chối đăng nhập (AUTH_FAILED): kiểm tra username/password VPN, hoặc đã vượt số thiết bị cho phép",
+        "en": "HMA rejected the login (AUTH_FAILED): check the VPN username/password, or the device limit was exceeded",
+    },
+    "vpn_exited": {"vi": "openvpn.exe đã thoát (mã {code})", "en": "openvpn.exe exited (code {code})"},
+    "vpn_connected": {"vi": "VPN đã kết nối: IP tunnel {ip}, server {server}", "en": "VPN connected: tunnel IP {ip}, server {server}"},
+    "vpn_reconnecting": {"vi": "VPN đang kết nối lại ({reason})", "en": "VPN reconnecting ({reason})"},
+    "tunnel_ip_duplicate": {
+        "vi": "Tunnel IP {ip} trùng với proxy {other}; kết nối lại để nhận IP khác",
+        "en": "Tunnel IP {ip} clashes with proxy {other}; reconnecting to get another one",
+    },
+    "port_in_use": {
+        "vi": "Cổng {port} đang bị chương trình khác dùng ({error}). Đổi base_port hoặc port của proxy.",
+        "en": "Port {port} is already in use ({error}). Change base_port or the proxy's port.",
+    },
+    "removed": {"vi": "Đã xóa proxy '{id}'", "en": "Removed proxy '{id}'"},
     "container_exists": {
-        "vi": "Proxy '{id}' đã tồn tại (container {name}); bỏ qua. Dùng 'remove' trước nếu muốn tạo lại.",
-        "en": "Proxy '{id}' already exists (container {name}); skipping. Run 'remove' first to recreate it.",
+        "vi": "Proxy '{id}' đã được tạo trước đó; bỏ qua.",
+        "en": "Proxy '{id}' already exists; skipping.",
     },
     "created": {
         "vi": "Đã tạo proxy '{id}' ({country}, {ovpn}) -> {bind}:{port}",
         "en": "Created proxy '{id}' ({country}, {ovpn}) -> {bind}:{port}",
+    },
+    "web_not_running": {
+        "vi": "Chương trình chưa chạy. Mở start.bat trước (lệnh này điều khiển chương trình đang chạy qua {url}).",
+        "en": "The program is not running. Start it with start.bat first (this command talks to it at {url}).",
     },
     "proxy_not_found": {
         "vi": "Không có proxy nào tên '{id}'",
@@ -150,8 +174,8 @@ MESSAGES: dict[str, dict[str, str]] = {
     "socks_fail": {"vi": "SOCKS5 lỗi: {error}", "en": "SOCKS5 failed: {error}"},
     # --- recovery / monitor ---
     "container_down": {
-        "vi": "Container không chạy (trạng thái {status}); khởi động lại",
-        "en": "Container is not running (status {status}); restarting",
+        "vi": "VPN không chạy (trạng thái {status}); khởi động lại",
+        "en": "VPN is not running (status {status}); restarting",
     },
     "unhealthy": {
         "vi": "Hỏng sau {count} lần kiểm tra thất bại liên tiếp",
@@ -175,15 +199,14 @@ MESSAGES: dict[str, dict[str, str]] = {
     },
     "recovered": {"vi": "Đã phục hồi, IP {ip}", "en": "Recovered, IP {ip}"},
     "socks_restart": {
-        "vi": "HTTP proxy chạy nhưng SOCKS5 lỗi; restart container SOCKS5",
-        "en": "HTTP proxy works but SOCKS5 failed; restarting the SOCKS5 container",
+        "vi": "HTTP proxy chạy nhưng SOCKS5 lỗi; mở lại cổng SOCKS5",
+        "en": "HTTP proxy works but SOCKS5 failed; reopening the SOCKS5 listener",
     },
     "monitor_start": {
         "vi": "Bắt đầu giám sát {count} proxy, chu kỳ {interval}s",
         "en": "Monitoring {count} proxies every {interval}s",
     },
     "monitor_stop": {"vi": "Dừng giám sát", "en": "Monitor stopped"},
-    "api_listening": {"vi": "API trạng thái tại http://{addr}:{port}/status", "en": "Status API at http://{addr}:{port}/status"},
     # --- export / gateway ---
     "export_empty": {
         "vi": "Không có proxy nào để xuất",

@@ -40,6 +40,14 @@ gateway:
   socks_port: 1080
   mode: roundrobin          # roundrobin | random
 
+openvpn:
+  path: ""                  # để trống = tự tìm C:\\Program Files\\OpenVPN\\bin\\openvpn.exe
+  driver: tap-windows6      # tap-windows6 (khuyên dùng) | wintun | ovpn-dco
+  adapter_prefix: HMA-Proxy # card mạng ảo sẽ tên HMA-Proxy-<id>
+
+dns:                        # DNS cho proxy, truy vấn đi qua chính tunnel VPN
+  servers: [1.1.1.1, 8.8.8.8, 9.9.9.9]
+
 web:
   bind: 127.0.0.1
   port: 8800

@@ -14,7 +14,7 @@ class ConfigError(HmaProxyError):
     exit_code = 2
 
 
-class DockerError(HmaProxyError):
+class SystemCheckError(HmaProxyError):
     exit_code = 3
 
 

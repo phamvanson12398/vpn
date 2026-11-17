@@ -1,7 +1,15 @@
 @echo off
-REM HMA Proxy Manager - chay giao dien web tren Windows
+REM HMA Proxy Manager - chay tren Windows (can quyen Administrator)
 setlocal
 cd /d "%~dp0"
+
+REM Tu xin quyen Administrator neu chua co
+net session >nul 2>&1
+if errorlevel 1 (
+  echo Dang xin quyen Administrator...
+  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
 
 if exist ".venv\Scripts\python.exe" goto :install
 where py >nul 2>nul
@@ -19,5 +27,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+title HMA Proxy Manager - dong cua so nay se ngat tat ca VPN
 ".venv\Scripts\python.exe" -m hmaproxy web %*
 pause

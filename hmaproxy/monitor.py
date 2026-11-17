@@ -45,15 +45,10 @@ class Monitor:
                 get_logger(pid).warning(reason)
                 self.recovery.recover(info, reason)
                 continue
-            if info.socks_status not in (None, "running"):
-                get_logger(pid).warning(t("socks_restart"))
-                try:
-                    mgr.ctl.restart_socks(pid)
-                except HmaProxyError as exc:
-                    get_logger(pid).error(str(exc))
             if info.http_port:
                 targets.append((pid, info.http_port, info.socks_port))
 
+        self._fix_duplicate_tunnel_ips(infos)
         results = check_many(cfg, targets, real_ip)
         grace = cfg.health.startup_grace_seconds
         threshold = cfg.health.failure_threshold
@@ -101,6 +96,23 @@ class Monitor:
                 reason = t("unhealthy", count=failures)
                 log.warning(reason)
                 self.recovery.recover(info, f"{reason}: {r.error}")
+
+    def _fix_duplicate_tunnel_ips(self, infos) -> None:
+        """Two HMA servers may hand out the same private tunnel IP; then outgoing
+        sockets bound to that IP are ambiguous. Reconnect the newer tunnel."""
+        seen: dict[str, object] = {}
+        for info in sorted(infos.values(), key=lambda i: i.connected_at or 0):
+            if info.status != "connected" or not info.local_ip:
+                continue
+            first = seen.get(info.local_ip)
+            if first is None:
+                seen[info.local_ip] = info
+                continue
+            get_logger(info.id).warning(t("tunnel_ip_duplicate", ip=info.local_ip, other=first.id))
+            try:
+                self.mgr.ctl.restart(info.id)
+            except HmaProxyError as exc:
+                get_logger(info.id).error(str(exc))
 
     # ------------------------------------------------------------------
     def run(self) -> None:

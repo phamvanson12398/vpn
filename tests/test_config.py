@@ -9,9 +9,10 @@ from hmaproxy.providers.base import split_ovpn_name
 
 
 def test_loads_valid_config(write_config):
-    cfg = load_config(write_config())
+    cfg = load_config(write_config(base_port=8881))
     assert [p.id for p in cfg.proxies] == ["jp", "sg", "us"]
     assert [p.http_port for p in cfg.proxies] == [8881, 8882, 8883]
+    assert cfg.openvpn.driver == "tap-windows6" and cfg.dns.servers[0] == "1.1.1.1"
     assert cfg.proxies[0].country == "Japan"
     assert all(p.socks_port is None for p in cfg.proxies)
     assert cfg.warnings == []
@@ -31,7 +32,7 @@ def test_missing_ovpn_file(write_config):
 
 def test_duplicate_ports_rejected(write_config):
     with pytest.raises(ConfigError, match="8881"):
-        load_config(write_config(proxies=[
+        load_config(write_config(base_port=8881, proxies=[
             {"id": "a", "ovpn": "Japan.Tokyo.TCP.ovpn"},
             {"id": "b", "ovpn": "Singapore.TCP.ovpn", "port": 8881},
         ]))
@@ -117,6 +118,18 @@ def test_ovpn_name_parsing():
     assert split_ovpn_name("UnitedStates.ovpn") == (["UnitedStates"], "")
     s = get_provider("hma").parse_server(__import__("pathlib").Path("USA_New-York.udp.ovpn"))
     assert s.country == "USA" and s.protocol == "udp" and s.location == "USA New York"
+
+
+def test_bad_driver_and_dns(write_config):
+    with pytest.raises(ConfigError, match="openvpn.driver"):
+        load_config(write_config(openvpn={"driver": "tap"}))
+    with pytest.raises(ConfigError, match="dns.servers"):
+        load_config(write_config(dns={"servers": ["dns.google"]}))
+
+
+def test_empty_proxy_list_is_allowed(write_config):
+    cfg = load_config(write_config(proxies=[]))
+    assert cfg.proxies == [] and cfg.warnings
 
 
 def test_unknown_provider(write_config):

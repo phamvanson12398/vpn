@@ -18,8 +18,7 @@ from .i18n import t
 from .providers import Credentials, Server, VpnProvider, get_provider, normalize_country
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
-DEFAULT_GLUETUN_IMAGE = "qmcgaw/gluetun:v3.40.0"
-DEFAULT_SOCKS_IMAGE = "gogost/gost:3.0.0"
+DRIVERS = ("tap-windows6", "wintun", "ovpn-dco")
 
 
 @dataclass
@@ -52,7 +51,24 @@ class ProxyAuth:
 class Socks5Config:
     enabled: bool = False
     base_port: int = 1081
-    image: str = DEFAULT_SOCKS_IMAGE
+
+
+@dataclass
+class OpenVPNConfig:
+    path: str = ""                    # empty = auto-detect C:\Program Files\OpenVPN\bin\openvpn.exe
+    driver: str = "tap-windows6"      # tap-windows6 | wintun | ovpn-dco
+    adapter_prefix: str = "HMA-Proxy"
+    route_metric: int = 9000
+    verbosity: int = 3
+    extra_config: list[str] = field(default_factory=list)  # extra lines appended to every .ovpn
+    connect_timeout_seconds: int = 60
+
+
+@dataclass
+class DnsConfig:
+    servers: list[str] = field(default_factory=lambda: ["1.1.1.1", "8.8.8.8", "9.9.9.9"])
+    timeout_seconds: float = 5.0
+    cache_seconds: int = 300
 
 
 @dataclass
@@ -112,8 +128,8 @@ class AppConfig:
     state_dir: Path
     env_file: Path
     language: str
-    container_prefix: str
-    gluetun_image: str
+    openvpn: OpenVPNConfig
+    dns: DnsConfig
     health: HealthConfig
     recovery: RecoveryConfig
     proxy_auth: ProxyAuth
@@ -231,10 +247,7 @@ def load_config(path: str | os.PathLike = "config.yaml", saved_plan: list[dict] 
 
     base_port = _check_port(data.get("base_port", 8881), "base_port")
 
-    images = _section(data, "images")
-    socks_data = _section(data, "socks5")
-    socks = _build(Socks5Config, {**socks_data, **({"image": images["socks"]} if "socks" in images else {})}, "socks5")
-    gluetun_image = str(images.get("gluetun", DEFAULT_GLUETUN_IMAGE))
+    socks = _build(Socks5Config, _section(data, "socks5"), "socks5")
 
     cfg = AppConfig(
         path=cfg_path,
@@ -248,8 +261,8 @@ def load_config(path: str | os.PathLike = "config.yaml", saved_plan: list[dict] 
         state_dir=_resolve_path(base, data.get("state_dir", "./.hmaproxy")),
         env_file=_resolve_path(base, data.get("env_file", ".env")),
         language=str(data.get("language", "vi")),
-        container_prefix=str(data.get("container_prefix", "hma-proxy")),
-        gluetun_image=gluetun_image,
+        openvpn=_build(OpenVPNConfig, _section(data, "openvpn"), "openvpn"),
+        dns=_build(DnsConfig, _section(data, "dns"), "dns"),
         health=_build(HealthConfig, _section(data, "health_check"), "health_check"),
         recovery=_build(RecoveryConfig, _section(data, "recovery"), "recovery"),
         proxy_auth=_build(ProxyAuth, _section(data, "proxy_auth"), "proxy_auth"),
@@ -261,8 +274,17 @@ def load_config(path: str | os.PathLike = "config.yaml", saved_plan: list[dict] 
         raw_proxies=list(data.get("proxies") or []),
         servers=[],
     )
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]*", cfg.container_prefix):
-        raise ConfigError(t("config_field_invalid", field="container_prefix", reason="invalid container name"))
+    if cfg.openvpn.driver not in DRIVERS:
+        raise ConfigError(t("config_field_invalid", field="openvpn.driver", reason=" | ".join(DRIVERS)))
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,20}", cfg.openvpn.adapter_prefix):
+        raise ConfigError(t("config_field_invalid", field="openvpn.adapter_prefix", reason="letters, digits, - _"))
+    for server in cfg.dns.servers:
+        try:
+            ipaddress.IPv4Address(str(server))
+        except ValueError as exc:
+            raise ConfigError(t("config_field_invalid", field="dns.servers", reason=str(exc))) from exc
+    if not cfg.dns.servers:
+        raise ConfigError(t("config_field_invalid", field="dns.servers", reason="at least one IPv4 DNS server"))
     _validate_scalars(cfg)
 
     if not cfg.ovpn_dir.is_dir():

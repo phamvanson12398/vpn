@@ -2,7 +2,7 @@
 
 Escalation ladder for one proxy:
 
-1. restart the container (up to ``recovery.max_restarts`` times), waiting
+1. restart the VPN connection (up to ``recovery.max_restarts`` times), waiting
    ``backoff_base * 2^(n-1)`` seconds (capped at ``backoff_max``) between tries
    so HMA does not see a burst of reconnects;
 2. if it is still broken, recreate it with another .ovpn of the same country
@@ -17,7 +17,7 @@ import time
 from typing import Callable
 
 from .config import AppConfig, ProxySpec
-from .docker_ctl import ContainerInfo, DockerController
+from .vpn_ctl import InstanceInfo, VpnController
 from .errors import HmaProxyError
 from .i18n import t
 from .logging_setup import get_logger
@@ -34,7 +34,7 @@ def backoff_delay(cfg: AppConfig, attempt: int) -> int:
 
 
 class Recovery:
-    def __init__(self, cfg: AppConfig, ctl: DockerController, store: StateStore,
+    def __init__(self, cfg: AppConfig, ctl: VpnController, store: StateStore,
                  credentials: Callable[[], Credentials], clock: Callable[[], float] = time.time):
         self.cfg = cfg
         self.ctl = ctl
@@ -43,15 +43,15 @@ class Recovery:
         self.clock = clock
 
     # ------------------------------------------------------------------
-    def spec_for(self, info: ContainerInfo) -> ProxySpec:
-        spec = self.cfg.proxy(info.id)
+    def spec_for(self, info: InstanceInfo) -> ProxySpec:
+        spec = self.ctl.specs.get(info.id) or self.cfg.proxy(info.id)
         if spec is not None:
             return spec
-        # Container created from an older config: rebuild the spec from its labels.
+        # Proxy created from an older config: rebuild the spec from the saved state.
         return ProxySpec(id=info.id, ovpn=info.ovpn, country=info.country,
                          http_port=info.http_port or 0, socks_port=info.socks_port)
 
-    def recover(self, info: ContainerInfo, reason: str) -> str:
+    def recover(self, info: InstanceInfo, reason: str) -> str:
         """Run one recovery step if the backoff allows it. Returns the action taken."""
         log = get_logger(info.id)
         now = self.clock()
@@ -105,7 +105,7 @@ class Recovery:
                                 consecutive_failures=0, started_at=now, last_error=reason)
         return "failed"
 
-    def _restart(self, info: ContainerInfo, log) -> bool:
+    def _restart(self, info: InstanceInfo, log) -> bool:
         try:
             if info.running:
                 self.ctl.restart(info.id)

@@ -31,15 +31,16 @@ from urllib.parse import parse_qs, urlparse
 import yaml
 
 from . import __version__
-from .config import WebConfig, load_config, parse_env_file
+from .config import WebConfig, load_config, load_credentials, parse_env_file
 from .errors import HmaProxyError, NotFoundError
 from .export import FORMATS, export_proxies
 from .gateway import Gateway, run_gateways_in_thread
 from .i18n import set_language, t
 from .logging_setup import get_logger, redact, register_secret, setup_logging
 from .monitor import Monitor
-from .service import Manager, docker_ok
+from .service import Manager, system_ok
 from .templates import init_project, set_env_values
+from .vpn_ctl import VpnController
 
 OVPN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,120}\.ovpn$", re.IGNORECASE)
 MAX_BODY = 2 * 1024 * 1024
@@ -53,6 +54,7 @@ class WebApp:
             init_project(self.base_dir)
         self.web = self._read_web_settings()
         self.mgr: Manager | None = None
+        self.ctl: VpnController | None = None   # lives for the whole process: tunnels survive config reloads
         self.config_error: str | None = None
         self.warnings: list[str] = []
         self.monitor: Monitor | None = None
@@ -77,7 +79,7 @@ class WebApp:
             self.monitor.stop()
             self.monitor = None
         try:
-            mgr = Manager.from_path(str(self.config_path))
+            cfg = self._load_cfg()
         except HmaProxyError as exc:
             self.mgr = None
             self.config_error = str(exc)
@@ -85,6 +87,12 @@ class WebApp:
             setup_logging(self.base_dir / ".hmaproxy" / "logs" / "hmaproxy.log", console_level="INFO")
             self.log.error(self.config_error)
             return
+        first = self.ctl is None
+        if first:
+            self.ctl = VpnController(cfg, self._store_for(cfg), credentials=self._credentials)
+        else:
+            self.ctl.cfg = cfg
+        mgr = Manager(cfg, ctl=self.ctl, store=self.ctl.store)
         self.mgr = mgr
         self.config_error = None
         self.warnings = list(mgr.cfg.warnings)
@@ -95,9 +103,43 @@ class WebApp:
         self._register_env_secret()
         for w in self.warnings:
             self.log.warning(w)
+        if first:
+            try:
+                started = self.ctl.restore()
+                if started:
+                    self.log.info("restored proxies: %s", ", ".join(started))
+            except HmaProxyError as exc:
+                self.log.error(str(exc))
         self.monitor = Monitor(mgr)
         self.monitor_thread = self.monitor.run_in_thread()
         self._start_gateways()
+
+    def _load_cfg(self):
+        from .state import StateStore
+
+        base = load_config(self.config_path)
+        plan = StateStore(base.state_dir).load().get("plan")
+        if plan and base.selection.mode == "random":
+            return load_config(self.config_path, saved_plan=plan)
+        return base
+
+    def _store_for(self, cfg):
+        from .state import StateStore
+
+        return StateStore(cfg.state_dir)
+
+    def _credentials(self):
+        assert self.mgr is not None
+        creds = load_credentials(self.mgr.cfg)
+        register_secret(creds.password)
+        return creds
+
+    def shutdown(self) -> None:
+        if self.monitor:
+            self.monitor.stop()
+        if self.ctl:
+            self.log.info("stopping all VPN tunnels ...")
+            self.ctl.shutdown()
 
     def _register_env_secret(self) -> None:
         if self.mgr is None:
@@ -141,7 +183,7 @@ class WebApp:
             "config_error": self.config_error,
             "warnings": self.warnings,
             "credentials_set": False,
-            "docker": {"ok": False, "error": None},
+            "system": {"ok": False, "error": None},
             "proxies": [],
             "ovpn_files": [],
             "settings": None,
@@ -173,15 +215,9 @@ class WebApp:
             "selection": cfg.selection.mode,
             "language": cfg.language,
         }
-        ok, err = docker_ok(mgr)
-        out["docker"] = {"ok": ok, "error": redact(err) if err else None}
-        if ok:
-            try:
-                out["proxies"] = mgr.rows()
-            except HmaProxyError as exc:
-                out["docker"] = {"ok": False, "error": str(exc)}
-        if not out["docker"]["ok"]:
-            out["proxies"] = mgr.rows(with_containers=False)
+        ok, err, info = system_ok(mgr)
+        out["system"] = {"ok": ok, "error": redact(err) if err else None, **info}
+        out["proxies"] = mgr.rows()
         real = mgr.store.load().get("real_ip") or {}
         out["real_ip"] = real.get("ip")
         if self.monitor:
@@ -500,7 +536,6 @@ def serve(config_path: Path, bind: str | None = None, port: int | None = None, o
     except KeyboardInterrupt:
         pass
     finally:
-        if app.monitor:
-            app.monitor.stop()
+        app.shutdown()
         server.server_close()
     return 0
